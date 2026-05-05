@@ -2,8 +2,8 @@ import { Quaternion, Vector3, Euler } from 'three';
 import type { FlightState, ControlInput } from './types';
 
 const GRAVITY = 0.0098;
-const MAX_THRUST = 0.5;
-const DRAG_COEFF = 0.001;
+const MAX_THRUST = 10.0;
+const DRAG_COEFF = 0.02;
 const LIFT_COEFF = 0.00008;
 const THROTTLE_RATE = 2.0;
 const ROLL_RATE = 2.0;
