@@ -6,31 +6,31 @@ export class PlaneVisual {
 
   constructor() {
     this.group = new Group();
-    this.group.scale.set(0.01, 0.01, 0.01);
+    this.group.scale.set(0.006, 0.006, 0.006);
 
-    // Fuselage (along Z axis, nose at -Z)
-    const body = this.part(0.35, 0.35, 2.5, '#5a5a5a');
+    // Fuselage (along Z axis, nose at -Z) → 15m long × 1.8m wide
+    const body = this.part(0.3, 0.3, 2.5, '#5a5a5a');
     body.position.set(0, 0, -0.2);
 
-    // Nose
-    const nose = this.part(0.25, 0.25, 0.3, '#4a4a4a');
+    // Nose → 1.5m
+    const nose = this.part(0.2, 0.2, 0.25, '#4a4a4a');
     nose.position.set(0, 0, -1.35);
 
-    // Cockpit
-    const cockpit = this.part(0.2, 0.12, 0.4, '#88ccff');
-    cockpit.position.set(0, 0.2, -0.6);
+    // Cockpit canopy → 0.9m × 0.5m × 2m
+    const cockpit = this.part(0.15, 0.08, 0.35, '#88ccff');
+    cockpit.position.set(0, 0.15, -0.6);
 
-    // Main wings (span along X axis)
-    const wings = this.part(4.0, 0.04, 0.08, '#6a6a6a');
-    wings.position.set(0, -0.05, 0.1);
+    // Main wings (span along X) → 9m span
+    const wings = this.part(1.5, 0.015, 0.08, '#6a6a6a');
+    wings.position.set(0, -0.04, 0);
 
-    // Horizontal stabilizers (tail wings)
-    const tailWings = this.part(1.2, 0.04, 0.08, '#6a6a6a');
+    // Horizontal stabilizers (tail wings) → 3m span
+    const tailWings = this.part(0.5, 0.015, 0.06, '#6a6a6a');
     tailWings.position.set(0, -0.03, 0.8);
 
-    // Vertical stabilizer (tail fin)
-    const tailFin = this.part(0.3, 0.6, 0.08, '#5a5a5a');
-    tailFin.position.set(0, 0.3, 0.7);
+    // Vertical stabilizer (tail fin) → 2.1m tall
+    const tailFin = this.part(0.03, 0.35, 0.06, '#5a5a5a');
+    tailFin.position.set(0, 0.25, 0.7);
 
     this.group.add(body, nose, cockpit, wings, tailWings, tailFin);
   }

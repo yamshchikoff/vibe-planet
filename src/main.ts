@@ -51,9 +51,8 @@ const cam = scene.getCamera();
 cam.fov = 85;
 cam.updateProjectionMatrix();
 
-// Chase camera state — smooth follow, 15m above, 20m behind in local frame
-const _camOffset = new Vector3(0, 0.015, 0.02);
-const _camPos = new Vector3();
+// Chase camera offset: 6m above (+Y), 15m behind (+Z) in plane's local frame
+const _camOffset = new Vector3(0, 0.006, 0.015);
 
 // Game loop
 scene.onUpdate((dt) => {
@@ -69,22 +68,10 @@ scene.onUpdate((dt) => {
 
   plane.update([px, py, pz], yaw, pitch, roll);
 
-  // Smooth chase camera: position behind/above in plane's local frame, look at plane
+  // Chase camera — behind/above in plane's local frame, lookAt (no roll coupling)
   const q = plane.getMesh().quaternion;
-  _camOffset.set(0, 0.015, 0.02).applyQuaternion(q);
-  const targetX = px + _camOffset.x;
-  const targetY = py + _camOffset.y;
-  const targetZ = pz + _camOffset.z;
-
-  const t = 1 - Math.exp(-20 * dt);
-  if (_camPos.lengthSq() === 0) {
-    _camPos.set(targetX, targetY, targetZ);
-  } else {
-    _camPos.x += (targetX - _camPos.x) * t;
-    _camPos.y += (targetY - _camPos.y) * t;
-    _camPos.z += (targetZ - _camPos.z) * t;
-  }
-  cam.position.copy(_camPos);
+  _camOffset.set(0, 0.006, 0.015).applyQuaternion(q);
+  cam.position.set(px + _camOffset.x, py + _camOffset.y, pz + _camOffset.z);
   cam.lookAt(px, py, pz);
 
   // LOD updates use actual camera position
