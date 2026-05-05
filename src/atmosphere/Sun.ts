@@ -20,7 +20,7 @@ export class Sun {
     this.inclination = config?.inclination ?? 0.41; // ~23.5° axial tilt
     this.light = new DirectionalLight(0xfff5e6, 1.5);
     this.light.position.set(50000, 30000, 0);
-    this.ambient = new AmbientLight(0x223355, 0.15);
+    this.ambient = new AmbientLight(0x8899bb, 0.35);
     this.direction = new Vector3();
   }
 
@@ -54,7 +54,7 @@ export class Sun {
     const height = sy;
     const intensity = 0.3 + 0.7 * Math.max(0, height);
     this.light.intensity = 1.5 * intensity;
-    this.ambient.intensity = 0.05 + 0.15 * Math.max(0, height);
+    this.ambient.intensity = 0.2 + 0.4 * Math.max(0, height);
   }
 
   dispose(): void {
