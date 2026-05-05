@@ -144,11 +144,14 @@ class LODPlanet {
 
 ```
 GRAVITY = 0.0098 (km/с²)
-MAX_THRUST = 0.015 (km/с²)
-DRAG_COEFF = 0.00002
+MAX_THRUST = 0.5 (km/с²)
+DRAG_COEFF = 0.001
 LIFT_COEFF = 0.00008
 THROTTLE_RATE = 2.0 (единиц/с)
-ROTATION_RATE = 2.0 (рад/с)
+ROLL_RATE = 2.0 (рад/с)
+PITCH_RATE = 2.0 (рад/с)
+YAW_RATE = 0.5 (рад/с)
+COORD_TURN_RATE = 0.6
 PLANET_RADIUS = 6371
 START_ALTITUDE = 2 (km)
 ```
