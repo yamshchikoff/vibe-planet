@@ -50,7 +50,7 @@ void main() {
   float depth = rim * 0.8 + 0.2;
 
   // Combine color
-  vec3 color = atmosphereColor * depth * density * (sunAngle * 0.8 + 0.2);
+  vec3 color = atmosphereColor * depth * density * (sunAngle * 1.2 + 0.2);
 
   // Fade to transparent at the top of the atmosphere
   float fade = 1.0 - smoothstep(0.0, atmosphereHeight, altitude);
@@ -81,7 +81,7 @@ export class Atmosphere {
         planetCenter: { value: new Vector3(0, 0, 0) },
         planetRadius: { value: R },
         atmosphereHeight: { value: H },
-        atmosphereColor: { value: new Color(0x4488ff) },
+        atmosphereColor: { value: new Color(0x66aaff) },
       },
       side: BackSide,
       transparent: true,

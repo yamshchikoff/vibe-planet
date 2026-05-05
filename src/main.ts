@@ -17,10 +17,11 @@ if (!canvas) throw new Error('Canvas element #app not found');
 const scene = new SceneManager(canvas);
 const worldGroup = scene.getWorldGroup();
 
-// Sun — directional + ambient light with day/night cycle
+// Sun — directional + hemisphere light with day/night cycle, visible disc
 const sun = new Sun();
 scene.getScene().add(sun.getLight());
-scene.getScene().add(sun.getAmbient());
+scene.getScene().add(sun.getHemisphere());
+scene.getScene().add(sun.getSunSprite());
 
 // Planet — cube-sphere LOD with quadtree
 const planet = new LODPlanet({

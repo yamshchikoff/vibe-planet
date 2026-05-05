@@ -1,4 +1,4 @@
-import { Scene, PerspectiveCamera, WebGLRenderer, Group } from 'three';
+import { Scene, PerspectiveCamera, WebGLRenderer, Group, ACESFilmicToneMapping, Color, SRGBColorSpace } from 'three';
 
 type UpdateCallback = (dt: number) => void;
 
@@ -19,15 +19,19 @@ export class SceneManager {
       logarithmicDepthBuffer: true,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.toneMapping = ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.outputColorSpace = SRGBColorSpace;
 
     this.scene = new Scene();
+    this.scene.background = new Color(0x050510);
 
     // Floating origin container: all world objects go here
     // Each frame, worldGroup.position = -camera.position to keep camera near origin
     this.worldGroup = new Group();
     this.scene.add(this.worldGroup);
 
-    this.camera = new PerspectiveCamera(75, 1, 0.1, 200000);
+    this.camera = new PerspectiveCamera(75, 1, 0.1, 2000000);
     this.camera.position.set(0, 6373, 0);
 
     this.resize();

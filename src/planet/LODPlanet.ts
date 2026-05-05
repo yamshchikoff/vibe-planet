@@ -1,7 +1,7 @@
 import {
   Group,
   Mesh,
-  MeshStandardMaterial,
+  MeshPhysicalMaterial,
   BufferGeometry,
   BufferAttribute,
   Vector3,
@@ -152,6 +152,35 @@ function getBiomeColor(normalizedHeight: number, lat: number): [number, number, 
   return snowColor;
 }
 
+function getBiomePBR(normalizedHeight: number, lat: number): [number, number] {
+  const h = Math.max(0, Math.min(1, normalizedHeight));
+  const snowThreshold = Math.max(
+    0.25,
+    0.85 - Math.max(0, Math.abs(lat) - Math.PI / 3) * 0.8
+  );
+
+  if (h < 0.1) {
+    return [0.05, 0.00]; // deep water
+  } else if (h < 0.25) {
+    return [0.20, 0.00]; // shallow water
+  } else if (h < 0.3) {
+    return [0.90, 0.00]; // sand
+  } else if (h < 0.55) {
+    return [0.80, 0.00]; // grassland
+  } else if (h < 0.7) {
+    return [0.70, 0.00]; // forest
+  } else if (h < snowThreshold) {
+    // Rock → high stone: smooth transition
+    const t = Math.max(0, Math.min(1, (h - 0.7) / (snowThreshold - 0.7)));
+    const s = t * t * (3 - 2 * t);
+    const roughness = 0.55 + (0.45 - 0.55) * s;
+    const metalness = 0.05 + (0.10 - 0.05) * s;
+    return [roughness, metalness];
+  } else {
+    return [0.95, 0.00]; // snow
+  }
+}
+
 export class LODPlanet {
   private config: Required<LODConfig>;
   private sampler: HeightSampler;
@@ -281,6 +310,7 @@ export class LODPlanet {
     const verts = res + 1;
     const positions: number[] = [];
     const colors: number[] = [];
+    const pbrData: number[] = [];
     const indices: number[] = [];
     const normals: number[] = [];
 
@@ -347,6 +377,10 @@ export class LODPlanet {
         const lat = Math.asin(Math.max(-1, Math.min(1, dir.y)));
         const [cr, cg, cb] = getBiomeColor(warpedH, lat);
         colors.push(cr, cg, cb);
+
+        // Per-vertex roughness and metalness
+        const [r, m] = getBiomePBR(warpedH, lat);
+        pbrData.push(r, m);
       }
     }
 
@@ -371,13 +405,46 @@ export class LODPlanet {
     geo.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
     geo.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
     geo.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+    geo.setAttribute('pbr', new BufferAttribute(new Float32Array(pbrData), 2));
     geo.setIndex(indices);
 
-    const mat = new MeshStandardMaterial({
+    const mat = new MeshPhysicalMaterial({
       vertexColors: true,
       roughness: 0.7,
       metalness: 0.1,
+      clearcoat: 0.04,
     });
+
+    // Patch shader to use per-vertex roughness/metalness from pbr attribute
+    mat.onBeforeCompile = (shader) => {
+      // Vertex: add varying to pass pbr data to fragment
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        `#include <common>
+        attribute vec2 pbr;
+        varying vec2 vPbr;`
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <color_vertex>',
+        `#include <color_vertex>
+        vPbr = pbr;`
+      );
+
+      // Fragment: use vPbr instead of uniform roughness/metalness
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+        varying vec2 vPbr;`
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        'float roughnessFactor = roughness;',
+        'float roughnessFactor = vPbr.x;'
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        'float metalnessFactor = metalness;',
+        'float metalnessFactor = vPbr.y;'
+      );
+    };
 
     const mesh = new Mesh(geo, mat);
     return mesh;
