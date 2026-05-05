@@ -13,20 +13,25 @@ export class SceneManager {
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setSize(canvas.width, canvas.height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     this.scene = new Scene();
 
-    this.camera = new PerspectiveCamera(
-      75,
-      canvas.width / canvas.height,
-      0.1,
-      1000
-    );
+    this.camera = new PerspectiveCamera(75, 1, 0.1, 1000);
     this.camera.position.set(0, 5, 15);
     this.camera.lookAt(0, 0, 0);
+
+    this.resize();
+    window.addEventListener('resize', this.resize);
   }
+
+  resize = (): void => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    this.renderer.setSize(w, h);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  };
 
   private loop = (time: number): void => {
     if (!this.running) return;
@@ -55,6 +60,7 @@ export class SceneManager {
       this.rafId = null;
     }
     this.lastTime = null;
+    window.removeEventListener('resize', this.resize);
   }
 
   onUpdate(cb: UpdateCallback): void {
