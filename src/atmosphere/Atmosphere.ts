@@ -8,11 +8,12 @@ import {
 } from 'three';
 
 const vertexShader = `
-varying vec3 vPosition;
+varying vec3 vWorldPosition;
 varying vec3 vNormal;
 void main() {
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vWorldPosition = worldPos.xyz;
   vNormal = normalize(normalMatrix * normal);
-  vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
@@ -24,31 +25,37 @@ uniform float planetRadius;
 uniform float atmosphereHeight;
 uniform vec3 atmosphereColor;
 
-varying vec3 vPosition;
+varying vec3 vWorldPosition;
 varying vec3 vNormal;
 
 void main() {
-  vec3 viewDir = normalize(-vPosition);
+  vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   vec3 normal = normalize(vNormal);
 
-  // Angle between view and normal (limb glow)
+  // Altitude above planet surface
+  float distFromCenter = length(vWorldPosition - planetCenter);
+  float altitude = max(0.0, distFromCenter - planetRadius);
+
+  // Atmosphere density falls off exponentially with altitude
+  float density = exp(-altitude / (atmosphereHeight * 0.25));
+
+  // Angle between view and normal (limb glow — thicker at edges)
   float rim = 1.0 - max(0.0, dot(viewDir, normal));
   rim = pow(rim, 3.0);
 
   // Angle between sun and normal (sun-facing side brighter)
   float sunAngle = max(0.0, dot(normal, normalize(sunDirection)));
 
-  // Optical depth (more at edges)
+  // Optical depth
   float depth = rim * 0.8 + 0.2;
 
-  // Combine
-  vec3 color = atmosphereColor * depth * (sunAngle * 0.8 + 0.2);
+  // Combine color
+  vec3 color = atmosphereColor * depth * density * (sunAngle * 0.8 + 0.2);
 
-  // Fade at top and bottom
-  float dist = length(vPosition);
-  float fade = 1.0 - smoothstep(planetRadius * 0.98, planetRadius + atmosphereHeight, dist);
+  // Fade to transparent at the top of the atmosphere
+  float fade = 1.0 - smoothstep(0.0, atmosphereHeight, altitude);
 
-  gl_FragColor = vec4(color, fade * 0.6);
+  gl_FragColor = vec4(color, fade * 0.5);
 }
 `;
 
@@ -89,8 +96,10 @@ export class Atmosphere {
     return this.mesh;
   }
 
-  update(_cameraPos: Vector3, sunDir: Vector3): void {
+  update(cameraPos: Vector3, sunDir: Vector3): void {
     this.material.uniforms.sunDirection.value.copy(sunDir);
+    // Planet center at render time = -camera.position (floating origin shift)
+    this.material.uniforms.planetCenter.value.copy(cameraPos).negate();
     this.mesh.position.set(0, 0, 0);
   }
 

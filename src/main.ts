@@ -86,6 +86,9 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyH' && overlay) {
     overlay.classList.toggle('visible');
   }
+  if (e.code === 'KeyU') {
+    atmosphere.getMesh().visible = !atmosphere.getMesh().visible;
+  }
 });
 
 // Start
