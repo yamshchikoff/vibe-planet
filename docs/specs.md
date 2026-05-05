@@ -71,11 +71,15 @@ Cube-sphere с квадродеревом: 6 граней куба, каждая
 
 ### Height Function
 - 3D seeded hash → value noise
-- FBM 12 октав с затуханием 0.5 (спектральный exponent β=1, 1/f noise)
+- FBM 12 октав с затуханием 0.5 (базовый ландшафт: холмы, равнины)
+- Ridged multi-fractal noise (ridge = (1 − |noise|)²) для горных зон — острые гребни и V-образные долины
+- Mountain mask (FBM 3 октавы, scale 2000 км) разделяет равнины и горные зоны с плавным переходом (smoothstep 0.25–0.55)
+- Финальная высота: `base + ridge × mask × 0.3` — в горах добавляется рельеф поверх базовой высоты
 - Высота нормализована в [0, 1], затем scaled к terrain amplitude
 - Минимальная длина волны: 200 / 2¹¹ ≈ 100 м (фрактальная деталь до ~100 м)
 - Детерминированна: seed + координаты → всегда тот же результат
 - Бесшовна: 3D noise не имеет UV-швов
+- Координаты в km (планета-пространство): LODPlanet передаёт position × R
 
 ### Biome Mapping (by normalized height + latitude)
 
@@ -160,7 +164,8 @@ class LODPlanet {
 ### Constants
 
 ```
-SPEED_CRUISE = 2.0   (km/с)  — фиксированная крейсерская скорость
+SPEED_CRUISE = 2.0   (km/с)  — крейсерская скорость по умолчанию
+SPEED_STEPS = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64]  — лог-шкала (×2 на шаг)
 THROTTLE_RATE = 4.0           — разгон 0→1 за ~0.25 с
 ROLL_RATE = 1.5       (рад/с)
 PITCH_RATE = 0.8      (рад/с)
@@ -210,6 +215,7 @@ class FlightModel {
   update(dt: number): void
   reset(): void
   setSpawn(position: [number, number, number]): void
+  changeSpeed(direction: -1 | 1): void  // ×2 или ÷2 по лог-шкале
 }
 ```
 
@@ -256,6 +262,8 @@ interface FlightState {
 | Shift | throttle | +1 | сектор газа вперёд |
 | Ctrl | throttle | -1 | сектор газа назад |
 | R | reset | — | сброс |
+| ] | speed up | — | ×2 крейсерская скорость |
+| [ | speed down | — | ÷2 крейсерская скорость |
 
 ### API
 
@@ -410,6 +418,8 @@ BoxGeometry параметры: (ширина X, высота Y, глубина 
 | Ctrl | Газ - |
 | H | Шпаргалка |
 | U | Атмосфера вкл/выкл |
+| ] | Скорость ×2 |
+| [ | Скорость ÷2 |
 
 ---
 
