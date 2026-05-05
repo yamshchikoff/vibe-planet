@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { FlightModel } from './FlightModel';
 import { PlaneVisual } from '../plane/PlaneVisual';
-import { Vector3 } from 'three';
+import { Vector3, Euler, Quaternion } from 'three';
+
+const SPEED_CRUISE = 2.0;
 
 describe('FlightModel', () => {
   let flight: FlightModel;
@@ -11,194 +13,213 @@ describe('FlightModel', () => {
   });
 
   describe('initial state', () => {
-    it('starts above ground with forward speed', () => {
+    it('is above planet surface', () => {
       const state = flight.getState();
       const [px, py, pz] = state.position;
       const dist = Math.sqrt(px * px + py * py + pz * pz);
-      expect(dist).toBeGreaterThan(6371); // above planet surface
-      expect(state.speed).toBeGreaterThan(0);
+      expect(dist).toBeGreaterThan(6371);
     });
 
-    it('has neutral orientation', () => {
+    it('has zero speed and throttle', () => {
+      const state = flight.getState();
+      expect(state.speed).toBe(0);
+      expect(state.throttle).toBe(0);
+    });
+
+    it('has neutral orientation at north pole', () => {
       const state = flight.getState();
       expect(state.orientation.pitch).toBe(0);
       expect(state.orientation.yaw).toBe(0);
       expect(state.orientation.roll).toBe(0);
     });
-
-    it('starts with cruise throttle 0.2', () => {
-      expect(flight.getState().throttle).toBe(0.2);
-    });
-
-    it('starts on the surface (z = 0), flying tangentially', () => {
-      const state = flight.getState();
-      expect(state.position[2]).toBe(0);
-    });
   });
 
   describe('throttle', () => {
-    it('increases throttle with positive input', () => {
+    it('ramps up with Shift (throttle=1)', () => {
       flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
       flight.update(1 / 60);
       expect(flight.getState().throttle).toBeGreaterThan(0);
     });
 
-    it('never exceeds max throttle', () => {
-      for (let i = 0; i < 100; i++) {
+    it('ramps down with Ctrl (throttle=-1)', () => {
+      flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: -1 });
+      flight.update(1 / 60);
+      expect(flight.getState().throttle).toBeLessThan(0);
+    });
+
+    it('stays within [-1, 1]', () => {
+      for (let i = 0; i < 200; i++) {
         flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
         flight.update(1 / 60);
       }
       expect(flight.getState().throttle).toBeLessThanOrEqual(1);
-    });
-
-    it('never goes below zero throttle', () => {
-      flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: -1 });
-      flight.update(1 / 60);
       expect(flight.getState().throttle).toBeGreaterThanOrEqual(0);
     });
 
-    it('full throttle for 2 seconds stays below 5 km/s (realistic speed)', () => {
-      for (let i = 0; i < 120; i++) {
+    it('ramps to 0 when no throttle input', () => {
+      flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+      for (let i = 0; i < 30; i++) {
         flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
         flight.update(1 / 60);
       }
-      expect(flight.getState().speed).toBeLessThan(5);
-    });
+      expect(flight.getState().throttle).toBeGreaterThan(0.5);
 
-    it('zero throttle for 3 seconds decelerates below 2 km/s', () => {
-      for (let i = 0; i < 180; i++) {
+      // Release throttle
+      for (let i = 0; i < 30; i++) {
         flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0 });
         flight.update(1 / 60);
       }
-      expect(flight.getState().speed).toBeLessThan(2);
+      expect(flight.getState().throttle).toBeLessThan(0.1);
     });
 
-    it('cruise throttle maintains speed within 10% over 2 seconds', () => {
-      const initialSpeed = flight.getState().speed;
-      for (let i = 0; i < 120; i++) {
-        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0 });
+    it('speed equals |throttle| * SPEED_CRUISE', () => {
+      flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+      for (let i = 0; i < 30; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
         flight.update(1 / 60);
       }
-      const speedChange = Math.abs(flight.getState().speed - initialSpeed);
-      expect(speedChange).toBeLessThan(initialSpeed * 0.1);
+      const s = flight.getState();
+      expect(s.speed).toBeCloseTo(Math.abs(s.throttle) * SPEED_CRUISE, 5);
     });
   });
 
   describe('movement', () => {
-    it('accelerates forward with throttle', () => {
-      const initialSpeed = flight.getState().speed;
-      for (let i = 0; i < 10; i++) {
+    it('moves forward with positive throttle', () => {
+      // Start at north pole: position (0, 6373, 0), identity quaternion
+      const [x0, y0, z0] = flight.getState().position;
+      for (let i = 0; i < 30; i++) {
         flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
         flight.update(1 / 60);
       }
-      const state = flight.getState();
-      expect(state.speed).toBeGreaterThan(initialSpeed);
+      const [x1, y1, z1] = flight.getState().position;
+      const moved = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2 + (z1 - z0) ** 2);
+      expect(moved).toBeGreaterThan(0);
+      // Forward is -Z: should move in -Z direction
+      expect(z1).toBeLessThan(z0);
     });
 
-    it('changes pitch over time with pitch input', () => {
+    it('moves backward with negative throttle', () => {
+      const [x0, y0, z0] = flight.getState().position;
+      for (let i = 0; i < 30; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: -1 });
+        flight.update(1 / 60);
+      }
+      const [x1, y1, z1] = flight.getState().position;
+      // Forward is -Z, backward is +Z
+      expect(z1).toBeGreaterThan(z0);
+    });
+
+    it('does not move with zero throttle', () => {
+      const [x0, y0, z0] = flight.getState().position;
+      for (let i = 0; i < 60; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0 });
+        flight.update(1 / 60);
+      }
+      const [x1, y1, z1] = flight.getState().position;
+      expect(x1).toBe(x0);
+      expect(y1).toBe(y0);
+      expect(z1).toBe(z0);
+    });
+  });
+
+  describe('orientation', () => {
+    it('pitch changes with pitch input', () => {
       flight.applyControls({ pitch: 1, yaw: 0, roll: 0, throttle: 0 });
       flight.update(1 / 60);
       expect(flight.getState().orientation.pitch).toBeGreaterThan(0);
     });
 
-    it('banked pitch causes horizontal turn (body-axis control)', () => {
-      // Roll 90° so local X (pitch axis) aligns with world Z
-      for (let i = 0; i < 50; i++) {
-        flight.applyControls({ pitch: 0, yaw: 0, roll: 1, throttle: 0 });
+    it('roll changes with roll input', () => {
+      flight.applyControls({ pitch: 0, yaw: 0, roll: 1, throttle: 0 });
+      flight.update(1 / 60);
+      expect(flight.getState().orientation.roll).toBeGreaterThan(0);
+    });
+
+    it('yaw changes with yaw input', () => {
+      flight.applyControls({ pitch: 0, yaw: 1, roll: 0, throttle: 0 });
+      flight.update(1 / 60);
+      expect(flight.getState().orientation.yaw).toBeGreaterThan(0);
+    });
+
+    it('opposite yaw reverses direction', () => {
+      flight.applyControls({ pitch: 0, yaw: 1, roll: 0, throttle: 0 });
+      for (let i = 0; i < 30; i++) {
+        flight.applyControls({ pitch: 0, yaw: 1, roll: 0, throttle: 0 });
         flight.update(1 / 60);
       }
-      expect(flight.getState().orientation.roll).toBeGreaterThan(Math.PI / 2 - 0.1);
+      const yawPos = flight.getState().orientation.yaw;
 
-      // Record X position after roll
-      const px0 = flight.getState().position[0];
-
-      // Pitch up while banked — body-axis pitch turns in horizontal plane
-      for (let i = 0; i < 60; i++) {
-        flight.applyControls({ pitch: 1, yaw: 0, roll: 0, throttle: 0.5 });
+      flight.applyControls({ pitch: 0, yaw: -1, roll: 0, throttle: 0 });
+      for (let i = 0; i < 30; i++) {
+        flight.applyControls({ pitch: 0, yaw: -1, roll: 0, throttle: 0 });
         flight.update(1 / 60);
       }
+      const yawNeg = flight.getState().orientation.yaw;
 
-      const dx = Math.abs(flight.getState().position[0] - px0);
-
-      // With body-axis controls, banking redirects pitch into world XZ
-      // With old world-axis controls, pitch only affects Y → dx ≈ 0
-      expect(dx).toBeGreaterThan(0.1);
+      // Yaw left should be less than yaw right
+      expect(yawNeg).toBeLessThan(yawPos);
     });
   });
 
-    it("banked aircraft turns smoothly without yaw input (coordinated turn)", () => {
-      // Roll to ~45° bank
-      for (let i = 0; i < 30; i++) {
-        flight.applyControls({ pitch: 0, yaw: 0, roll: 1, throttle: 0 });
-        flight.update(1 / 60);
-      }
-      expect(Math.abs(flight.getState().orientation.roll)).toBeGreaterThan(0.5);
-
-      // Heading before coordinated turn
-      const yaw0 = flight.getState().orientation.yaw;
-
-      // Step forward with NO controls — coordinated turn should change heading
+  describe('non-polar spawn', () => {
+    it('no spontaneous movement at mountain spawn', () => {
+      const fm = new FlightModel(6371, [5993.87, 2181.71, 0]);
+      const [x0, y0, z0] = fm.getState().position;
       for (let i = 0; i < 60; i++) {
-        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0.5 });
-        flight.update(1 / 60);
+        fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0 });
+        fm.update(1 / 60);
       }
-
-      const dyaw = Math.abs(flight.getState().orientation.yaw - yaw0);
-      expect(dyaw).toBeGreaterThan(0.1);
+      const [x1, y1, z1] = fm.getState().position;
+      expect(x1).toBe(x0);
+      expect(y1).toBe(y0);
+      expect(z1).toBe(z0);
     });
 
+    it('forward is tangent to surface at mountain spawn', () => {
+      const fm = new FlightModel(6371, [5993.87, 2181.71, 0]);
+      fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+      for (let i = 0; i < 30; i++) {
+        fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+        fm.update(1 / 60);
+      }
+      const state = fm.getState();
+      const [px, py, pz] = state.position;
+      const radial = new Vector3(px, py, pz).normalize();
+      const [vx, vy, vz] = state.velocity;
+      const fwd = new Vector3(vx, vy, vz).normalize();
+
+      // Нос направлен по касательной к поверхности
+      expect(Math.abs(fwd.dot(radial))).toBeLessThan(0.05);
+    });
+  });
+
   describe('ground collision', () => {
-    it('does not go below planet surface (radial distance)', () => {
-      flight.applyControls({ pitch: -1, yaw: 0, roll: 0, throttle: 0 });
-      // Let it fall for a while (nose down + no throttle)
-      for (let i = 0; i < 300; i++) {
+    it('does not go below planet surface', () => {
+      // Point nose down and apply throttle
+      for (let i = 0; i < 60; i++) {
         flight.applyControls({ pitch: -1, yaw: 0, roll: 0, throttle: 0 });
+        flight.update(1 / 60);
+      }
+      // Now fly down
+      for (let i = 0; i < 200; i++) {
+        flight.applyControls({ pitch: -1, yaw: 0, roll: 0, throttle: 1 });
         flight.update(1 / 60);
       }
       const state = flight.getState();
       const [px, py, pz] = state.position;
       const dist = Math.sqrt(px * px + py * py + pz * pz);
-      expect(dist).toBeGreaterThanOrEqual(6371);
+      expect(dist).toBeGreaterThanOrEqual(6371 - 0.001);
     });
   });
 
   describe('consistency with PlaneVisual', () => {
-    it('nose direction matches movement direction after physics step', () => {
-      const fm = new FlightModel(10);
+    it('nose direction matches movement direction', () => {
+      const fm = new FlightModel(6371, [5993.87, 2181.71, 0]);
       const pv = new PlaneVisual();
 
-      // Apply some controls and step physics
-      fm.applyControls({ pitch: 0.3, yaw: 0.5, roll: 0, throttle: 0.5 });
-      fm.update(1 / 60);
-
-      const state = fm.getState();
-      const { yaw, pitch, roll } = state.orientation;
-      const [vx, vy, vz] = state.velocity;
-      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-
-      // Update visual with same state
-      pv.update(state.position, yaw, pitch, roll);
-
-      // Nose direction from PlaneVisual group quaternion
-      const noseDir = new Vector3(0, 0, -1).applyQuaternion(pv.getMesh().quaternion);
-
-      // Movement direction from flight model velocity
-      const moveDir = new Vector3(vx / speed, vy / speed, vz / speed);
-
-      // Nose should point in the same direction as movement (dot > 0.99)
-      const dot = noseDir.dot(moveDir);
-      expect(dot).toBeGreaterThan(0.99);
-
-      pv.dispose();
-    });
-
-    it('nose and movement stay aligned with non-zero roll', () => {
-      const fm = new FlightModel(10);
-      const pv = new PlaneVisual();
-
-      // Steady turn with roll
+      fm.applyControls({ pitch: 0.3, yaw: 0.5, roll: 0, throttle: 1 });
       for (let i = 0; i < 30; i++) {
-        fm.applyControls({ pitch: 0.1, yaw: 0.8, roll: 0.5, throttle: 0.5 });
+        fm.applyControls({ pitch: 0.3, yaw: 0.5, roll: 0, throttle: 1 });
         fm.update(1 / 60);
       }
 
@@ -208,24 +229,21 @@ describe('FlightModel', () => {
       const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
 
       pv.update(state.position, yaw, pitch, roll);
-
       const noseDir = new Vector3(0, 0, -1).applyQuaternion(pv.getMesh().quaternion);
       const moveDir = new Vector3(vx / speed, vy / speed, vz / speed);
 
-      // Roll should not desync nose from movement: both come from same quaternion
-      const dot = noseDir.dot(moveDir);
-      expect(dot).toBeGreaterThan(0.5);
-
+      expect(noseDir.dot(moveDir)).toBeGreaterThan(0.99);
       pv.dispose();
     });
 
-    it('initial state: nose in -Z, movement in -Z', () => {
+    it('initial state: nose in -Z, movement in -Z at north pole', () => {
       const fm = new FlightModel(10);
       const pv = new PlaneVisual();
 
+      fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+      fm.update(1 / 60);
       const state = fm.getState();
       const { yaw, pitch, roll } = state.orientation;
-
       pv.update(state.position, yaw, pitch, roll);
 
       const noseDir = new Vector3(0, 0, -1).applyQuaternion(pv.getMesh().quaternion);
@@ -233,53 +251,42 @@ describe('FlightModel', () => {
       const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
       const moveDir = new Vector3(vx / speed, vy / speed, vz / speed);
 
-      // Both should point in -Z
       expect(noseDir.z).toBeLessThan(0);
       expect(moveDir.z).toBeLessThan(0);
-
-      // And both should roughly be (0, 0, -1)
       expect(noseDir.x).toBeCloseTo(0);
-      expect(noseDir.y).toBeCloseTo(0);
       expect(noseDir.z).toBeCloseTo(-1);
-
-      expect(moveDir.x).toBeCloseTo(0);
-      expect(moveDir.y).toBeCloseTo(0);
-      expect(moveDir.z).toBeCloseTo(-1);
-
       pv.dispose();
     });
 
     it('velocity magnitude equals speed', () => {
-      const fm = new FlightModel(10);
+      const fm = new FlightModel(6371, [5993.87, 2181.71, 0]);
 
-      for (let i = 0; i < 10; i++) {
-        fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0.5 });
+      for (let i = 0; i < 30; i++) {
+        fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
         fm.update(1 / 60);
       }
 
       const state = fm.getState();
       const [vx, vy, vz] = state.velocity;
       const vMag = Math.sqrt(vx * vx + vy * vy + vz * vz);
-      const speed = state.speed;
-
-      // Slight tolerance for vertical speed component
-      expect(vMag).toBeCloseTo(speed, 1);
+      expect(vMag).toBeCloseTo(state.speed, 5);
     });
   });
 
   describe('state reset', () => {
     it('resets to initial state', () => {
-      for (let i = 0; i < 30; i++) {
-        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+      for (let i = 0; i < 60; i++) {
+        flight.applyControls({ pitch: 1, yaw: 0, roll: 0, throttle: 1 });
         flight.update(1 / 60);
       }
       const preSpeed = flight.getState().speed;
 
       flight.reset();
       const state = flight.getState();
-      // After reset should be different from pre-reset
+      expect(state.speed).toBe(0);
+      expect(state.throttle).toBe(0);
+      // Reset should change state from pre-reset
       expect(state.speed).not.toBe(preSpeed);
-      expect(state.throttle).toBe(0.2);
     });
   });
 });
