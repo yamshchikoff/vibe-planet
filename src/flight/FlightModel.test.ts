@@ -54,6 +54,26 @@ describe('FlightModel', () => {
       flight.update(1 / 60);
       expect(flight.getState().throttle).toBeGreaterThanOrEqual(0);
     });
+
+    it('full throttle for 2 seconds increases speed by at least 3 km/s', () => {
+      const initialSpeed = flight.getState().speed;
+      for (let i = 0; i < 120; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+        flight.update(1 / 60);
+      }
+      const speedIncrease = flight.getState().speed - initialSpeed;
+      expect(speedIncrease).toBeGreaterThan(3);
+    });
+
+    it('zero throttle for 3 seconds decreases speed by at least 1 km/s', () => {
+      const initialSpeed = flight.getState().speed;
+      for (let i = 0; i < 180; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0 });
+        flight.update(1 / 60);
+      }
+      const speedDecrease = initialSpeed - flight.getState().speed;
+      expect(speedDecrease).toBeGreaterThan(1);
+    });
   });
 
   describe('movement', () => {
