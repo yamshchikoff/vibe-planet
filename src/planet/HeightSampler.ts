@@ -102,31 +102,43 @@ export class HeightSampler {
     return value / maxVal;
   }
 
-  /** Ridged multi-fractal noise in [0, 1] — sharp V-shaped ridges and valleys */
-  private ridgedFbm(
+  /** Ridged multi-fractal — Musgrave-style with weight feedback.
+   *  Noise mapped to [-1, 1] for true V-shaped ridges.
+   *  Weight feedback: mountainous areas get rougher at finer scales while
+   *  flat areas stay smooth. Output in [0, 1]. */
+  private ridgedMultifractal(
     x: number, y: number, z: number,
     octaves: number, scale: number, seedOffset: number
   ): number {
-    let amplitude = this.gain;
     let frequency = 1 / scale;
-    let value = 0;
+    let amplitude = this.gain;
+    let result = 0;
     let maxVal = 0;
+    let signal = 0;
+    let weight = 1.0;
+    const threshold = 2.0;
 
     for (let i = 0; i < octaves; i++) {
       const n = valueNoise3D(
         x * frequency, y * frequency, z * frequency,
         this.seed + seedOffset + i * 137
       );
-      // Ridge: 1 at noise zero-crossings, 0 at noise extremes (±1)
-      const ridge = 1 - Math.abs(n);
-      // Square to sharpen: narrow peaks, broad valleys
-      value += ridge * ridge * amplitude;
+      // Map noise to [-1, 1] for V-shaped ridge
+      const signed = n * 2 - 1;
+      // Ridge: peaks at noise ≈ 0, valleys at noise ≈ ±1
+      signal = 1 - Math.abs(signed);
+      signal *= signal; // sharpen
+      // Weight feedback: mountainous areas get rougher
+      signal *= weight;
+      result += signal * amplitude;
       maxVal += amplitude;
+      // Update weight for next octave
+      weight = Math.min(1, Math.max(0, signal * threshold));
       frequency *= this.lacunarity;
       amplitude *= this.gain;
     }
 
-    return value / maxVal;
+    return result / maxVal;
   }
 
   /** Mountain mask in [0, 1] — continental-scale separation of flat and mountain zones */
@@ -134,8 +146,8 @@ export class HeightSampler {
     const maskScale = 2000;
     const maskOctaves = 3;
     const raw = this.fbm(x, y, z, maskOctaves, maskScale, 3000);
-    // Push toward 0 (flat) or 1 (mountain) with smooth transition
-    return smoothstepEdge(0.25, 0.55, raw);
+    // Wider transition: 0.2–0.6 creates foothills zone between flat and mountain
+    return smoothstepEdge(0.2, 0.6, raw);
   }
 
   getHeight(x: number, y: number, z: number): number {
@@ -145,15 +157,19 @@ export class HeightSampler {
     // Smooth base terrain (rolling hills, plains) — same octaves
     const base = this.fbm(x, y, z, this.octaves, this.scale, 0);
 
-    // Sharp ridged mountains — use slightly fewer octaves (ridge noise naturally
-    // contains more high-frequency energy per octave)
+    // Ridged multifractal — Musgrave-style with weight feedback.
+    // Ridge noise naturally contains more high-frequency energy per octave,
+    // so use slightly fewer octaves than base FBM.
     const ridgeOctaves = Math.min(10, this.octaves);
-    const ridge = this.ridgedFbm(x, y, z, ridgeOctaves, this.scale, 2000);
+    const ridge = this.ridgedMultifractal(x, y, z, ridgeOctaves, this.scale, 2000);
 
-    // Blend between flat and mountain terrain
-    // In flat zones: smooth base terrain
-    // In mountain zones: base terrain + ridged detail on top (mountains are higher AND sharper)
-    return Math.min(1, base + ridge * mask * 0.3);
+    // Blend: flat zones get base terrain, mountains get base + ridge uplift.
+    // The transition passes through a foothills zone (mask ≈ 0.3–0.7)
+    // where terrain gradually steepens and elevation rises.
+    // Mountains rise higher AND have sharp ridge detail superimposed.
+    const mountainLift = mask * 0.2;          // elevation boost proportional to mask
+    const ridgeStrength = mask * 0.3;         // ridge detail proportional to mask
+    return Math.min(1, base * (1 + mountainLift) + ridge * ridgeStrength);
   }
 
   // Domain warp for fractal biome boundaries.
