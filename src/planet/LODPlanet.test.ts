@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { LODPlanet } from './LODPlanet';
-import { Vector3 } from 'three';
+import { Vector3, Mesh } from 'three';
 
 describe('LODPlanet', () => {
   it('constructor does not throw', () => {
@@ -94,5 +94,46 @@ describe('LODPlanet', () => {
     expect(closeCount).toBeGreaterThanOrEqual(count);
     p.dispose();
     p2.dispose();
+  });
+
+  it('triangle normals face outward from sphere center', () => {
+    const p = new LODPlanet({ seed: 42, maxDepth: 3, maxChunks: 100 });
+    p.update(new Vector3(0, 6375, 0));
+
+    const children = p.getMesh().children;
+    expect(children.length).toBeGreaterThan(0);
+
+    for (const child of children) {
+      const mesh = child as Mesh;
+      const pos = mesh.geometry.getAttribute('position');
+      const idx = mesh.geometry.getIndex();
+      if (!idx) continue;
+
+      const indices = idx.array;
+      const numTriangles = Math.min((indices.length as number) / 3, 5);
+
+      for (let t = 0; t < numTriangles; t++) {
+        const i0 = indices[t * 3] as number;
+        const i1 = indices[t * 3 + 1] as number;
+        const i2 = indices[t * 3 + 2] as number;
+
+        const p0 = new Vector3(pos.getX(i0), pos.getY(i0), pos.getZ(i0));
+        const p1 = new Vector3(pos.getX(i1), pos.getY(i1), pos.getZ(i1));
+        const p2 = new Vector3(pos.getX(i2), pos.getY(i2), pos.getZ(i2));
+
+        const e1 = new Vector3().copy(p1).sub(p0);
+        const e2 = new Vector3().copy(p2).sub(p0);
+        const normal = new Vector3().crossVectors(e1, e2).normalize();
+
+        // Outward direction from sphere center
+        const outward = new Vector3().copy(p0).normalize();
+
+        // Normal should point roughly outward (same hemisphere as vertex)
+        const dot = normal.dot(outward);
+        expect(dot).toBeGreaterThan(0);
+      }
+    }
+
+    p.dispose();
   });
 });
