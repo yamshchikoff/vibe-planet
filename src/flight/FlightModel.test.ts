@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { FlightModel } from './FlightModel';
+import { PlaneVisual } from '../plane/PlaneVisual';
+import { Vector3 } from 'three';
 
 describe('FlightModel', () => {
   let flight: FlightModel;
@@ -77,6 +79,114 @@ describe('FlightModel', () => {
       }
       const state = flight.getState();
       expect(state.position[1]).toBeGreaterThanOrEqual(10); // planet radius
+    });
+  });
+
+  describe('consistency with PlaneVisual', () => {
+    it('nose direction matches movement direction after physics step', () => {
+      const fm = new FlightModel(10);
+      const pv = new PlaneVisual();
+
+      // Apply some controls and step physics
+      fm.applyControls({ pitch: 0.3, yaw: 0.5, roll: 0, throttle: 0.5 });
+      fm.update(1 / 60);
+
+      const state = fm.getState();
+      const { yaw, pitch, roll } = state.orientation;
+      const [vx, vy, vz] = state.velocity;
+      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+
+      // Update visual with same state
+      pv.update(state.position, yaw, pitch, roll);
+
+      // Nose direction from PlaneVisual group quaternion
+      const noseDir = new Vector3(0, 0, -1).applyQuaternion(pv.getMesh().quaternion);
+
+      // Movement direction from flight model velocity
+      const moveDir = new Vector3(vx / speed, vy / speed, vz / speed);
+
+      // Nose should point in the same direction as movement (dot > 0.99)
+      const dot = noseDir.dot(moveDir);
+      expect(dot).toBeGreaterThan(0.99);
+
+      pv.dispose();
+    });
+
+    it('nose and movement stay aligned with non-zero roll', () => {
+      const fm = new FlightModel(10);
+      const pv = new PlaneVisual();
+
+      // Steady turn with roll
+      for (let i = 0; i < 30; i++) {
+        fm.applyControls({ pitch: 0.1, yaw: 0.8, roll: 0.5, throttle: 0.5 });
+        fm.update(1 / 60);
+      }
+
+      const state = fm.getState();
+      const { yaw, pitch, roll } = state.orientation;
+      const [vx, vy, vz] = state.velocity;
+      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+
+      pv.update(state.position, yaw, pitch, roll);
+
+      const noseDir = new Vector3(0, 0, -1).applyQuaternion(pv.getMesh().quaternion);
+      const moveDir = new Vector3(vx / speed, vy / speed, vz / speed);
+
+      // Roll should not desync nose from movement for same yaw/pitch
+      // FlightModel ignores roll for velocity, so the comparison is roll=0
+      // direction vs visual with roll — these CAN differ at high roll
+      // but the dot should still be positive (same general direction)
+      const dot = noseDir.dot(moveDir);
+      expect(dot).toBeGreaterThan(0.5);
+
+      pv.dispose();
+    });
+
+    it('initial state: nose in -Z, movement in -Z', () => {
+      const fm = new FlightModel(10);
+      const pv = new PlaneVisual();
+
+      const state = fm.getState();
+      const { yaw, pitch, roll } = state.orientation;
+
+      pv.update(state.position, yaw, pitch, roll);
+
+      const noseDir = new Vector3(0, 0, -1).applyQuaternion(pv.getMesh().quaternion);
+      const [vx, vy, vz] = state.velocity;
+      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
+      const moveDir = new Vector3(vx / speed, vy / speed, vz / speed);
+
+      // Both should point in -Z
+      expect(noseDir.z).toBeLessThan(0);
+      expect(moveDir.z).toBeLessThan(0);
+
+      // And both should roughly be (0, 0, -1)
+      expect(noseDir.x).toBeCloseTo(0);
+      expect(noseDir.y).toBeCloseTo(0);
+      expect(noseDir.z).toBeCloseTo(-1);
+
+      expect(moveDir.x).toBeCloseTo(0);
+      expect(moveDir.y).toBeCloseTo(0);
+      expect(moveDir.z).toBeCloseTo(-1);
+
+      pv.dispose();
+    });
+
+    it('velocity magnitude equals speed', () => {
+      const fm = new FlightModel(10);
+
+      for (let i = 0; i < 10; i++) {
+        fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0.5 });
+        fm.update(1 / 60);
+      }
+
+      const state = fm.getState();
+      const [vx, vy, vz] = state.velocity;
+      const vMag = Math.sqrt(vx * vx + vy * vy + vz * vz);
+      const speed = state.speed;
+
+      // Slight tolerance for vertical speed component
+      expect(vMag).toBeCloseTo(speed, 1);
     });
   });
 
