@@ -25,12 +25,19 @@ class SceneManager {
 - **running**: цикл рендера активен
 - **stopped**: цикл остановлен
 
+### Tone Mapping
+- `ACESFilmicToneMapping` — кинематографичный highlight roll-off, насыщенные тени
+- `toneMappingExposure = 1.0`
+- `outputColorSpace = SRGBColorSpace`
+- `scene.background = #050510` — тёмный navy, не чёрный космос
+
 ### Edge Cases
 - Canvas нулевого размера → ресайз при старте
 - Окно меняет размер → слушатель `window.resize`, обновление камеры и рендерера
 - Потеря WebGL контекста → авто-восстановление (Three.js default handler)
 - Первый кадр: коллбэки onUpdate вызываются сразу (lastTime инициализируется при старте, а не в первом loop)
 - Большая сцена (радиус планеты 6371): WebGLRenderer включает logarithmicDepthBuffer
+- Дальняя плоскость камеры: 2000000 (для рендера солнечного диска на расстоянии 500000 km)
 
 ---
 
@@ -80,6 +87,25 @@ Cube-sphere с квадродеревом: 6 граней куба, каждая
 - Детерминированна: seed + координаты → всегда тот же результат
 - Бесшовна: 3D noise не имеет UV-швов
 - Координаты в km (планета-пространство): LODPlanet передаёт position × R
+
+### Per-Vertex PBR
+
+Каждая вершина несёт roughness и metalness, соответствующие биому:
+
+| Biome | Roughness | Metalness |
+|-------|-----------|-----------|
+| Deep Water | 0.05 | 0.00 |
+| Shallow Water | 0.20 | 0.00 |
+| Sand/Beach | 0.90 | 0.00 |
+| Grassland | 0.80 | 0.00 |
+| Forest | 0.70 | 0.00 |
+| Rock → High Stone | 0.55 → 0.45 | 0.05 → 0.10 |
+| Snow | 0.95 | 0.00 |
+
+- `MeshPhysicalMaterial` с `clearcoat: 0.04`
+- `BufferAttribute('pbr', Float32Array, 2)` на геометрии чанка
+- `onBeforeCompile` патчит `roughnessFactor` и `metalnessFactor` на кастомные varyings
+- Плавная интерполяция между биомами (smoothstep, те же thresholds что и для цвета)
 
 ### Biome Mapping (by normalized height + latitude)
 
@@ -341,6 +367,8 @@ interface SunConfig {
 class Sun {
   constructor(config?: Partial<SunConfig>)
   getLight(): THREE.DirectionalLight     // свет для сцены
+  getHemisphere(): THREE.HemisphereLight // полусферическое освещение
+  getSunSprite(): THREE.Sprite           // видимый диск солнца
   getDirection(): THREE.Vector3          // направление на солнце (world)
   update(time: number): void             // вращение по времени
   dispose(): void
@@ -349,17 +377,22 @@ class Sun {
 
 ### Поведение
 - DirectionalLight с интенсивностью 1.5 × (0.3 + 0.7 × max(0, sun.y))
-- AmbientLight с интенсивностью 0.2 + 0.4 × max(0, sun.y)
 - Цвет DirectionalLight: #fff5e6 (тёплый белый)
-- Цвет AmbientLight: #8899bb (голубоватый рассеянный свет)
+- **HemisphereLight** заменяет AmbientLight:
+  - skyColor: #87CEEB (голубой) → плавно к #FF8844 на закате
+  - groundColor: #3B2F2F (тёмный) → плавно к #1a1a2e ночью
+  - intensity: 0.40 в зените → 0.12 ночью
+- **Visible Sun Disc**: THREE.Sprite с процедурным радиальным градиентом
+  - AdditiveBlending, depthTest: false
+  - Размер 12000 × 12000 на расстоянии 500000 km
+  - В корне сцены (не worldGroup)
 - Вращается вокруг планеты по времени (полный оборот = 120 секунд демо-времени)
 - Аксиальный наклон 23.5° (inclination = 0.41 rad)
 - **Y-компонента направления постоянна** (sin(inclination)): при старте над северным полюсом солнце всегда выше горизонта (полярный день). Истинный день/ночь потребует изменения долготы.
-- Солнечный диск: не реализован (sprite planned)
 
 ### Edge Cases
-- Солнце за горизонтом → AmbientLight = 0.2, DirectionalLight = 0.45 (минимальные)
-- Переход день/ночь → плавная интерполяция интенсивности
+- Солнце за горизонтом → DirectionalLight = 0.45 (минимум), HemisphereLight = 0.12
+- Переход день/ночь → плавная интерполяция интенсивности и цвета неба
 
 ---
 
