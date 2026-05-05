@@ -107,14 +107,14 @@ describe('KeyboardControls', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA' }));
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' }));
 
-    // Q = yaw -1 (rudder left)
+    // Q = yaw +1 (rudder right)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ' }));
-    expect(controls.getInput().yaw).toBe(-1);
+    expect(controls.getInput().yaw).toBe(1);
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyQ' }));
 
-    // E = yaw +1 (rudder right)
+    // E = yaw -1 (rudder left)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' }));
-    expect(controls.getInput().yaw).toBe(1);
+    expect(controls.getInput().yaw).toBe(-1);
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyE' }));
 
     controls.detach();
