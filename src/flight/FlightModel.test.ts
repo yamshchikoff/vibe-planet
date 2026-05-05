@@ -289,4 +289,53 @@ describe('FlightModel', () => {
       expect(state.speed).not.toBe(preSpeed);
     });
   });
+
+  describe('speed scale', () => {
+    it('default cruise speed is 2.0', () => {
+      expect(flight.getCruiseSpeed()).toBe(2.0);
+    });
+
+    it('changeSpeed(1) doubles cruise speed', () => {
+      flight.changeSpeed(1);
+      expect(flight.getCruiseSpeed()).toBeCloseTo(4.0);
+      flight.changeSpeed(1);
+      expect(flight.getCruiseSpeed()).toBeCloseTo(8.0);
+    });
+
+    it('changeSpeed(-1) halves cruise speed', () => {
+      flight.changeSpeed(-1);
+      expect(flight.getCruiseSpeed()).toBeCloseTo(1.0);
+      flight.changeSpeed(-1);
+      expect(flight.getCruiseSpeed()).toBeCloseTo(0.5);
+    });
+
+    it('moves faster at higher cruise speed', () => {
+      const baseMove = (speed: number): number => {
+        const fm = new FlightModel(6371, [6373, 0, 0]);
+        fm.changeSpeed(speed === 4 ? 1 : -1);
+        for (let i = 0; i < 30; i++) {
+          fm.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
+          fm.update(1 / 60);
+        }
+        const [, , z] = fm.getState().position;
+        return Math.abs(z);
+      };
+      expect(baseMove(4)).toBeGreaterThan(baseMove(1));
+    });
+
+    it('clamps at max scale (64 km/s)', () => {
+      for (let i = 0; i < 10; i++) flight.changeSpeed(1);
+      expect(flight.getCruiseSpeed()).toBeLessThanOrEqual(64);
+      // Extra increments stay at max
+      flight.changeSpeed(1);
+      expect(flight.getCruiseSpeed()).toBeLessThanOrEqual(64);
+    });
+
+    it('clamps at min scale (0.125 km/s)', () => {
+      for (let i = 0; i < 10; i++) flight.changeSpeed(-1);
+      expect(flight.getCruiseSpeed()).toBeGreaterThanOrEqual(0.125);
+      flight.changeSpeed(-1);
+      expect(flight.getCruiseSpeed()).toBeGreaterThanOrEqual(0.125);
+    });
+  });
 });

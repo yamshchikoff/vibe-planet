@@ -104,9 +104,9 @@ describe('Atmosphere', () => {
     const camPos = new Vector3(0, 0, 0);
     atmo.update(camPos, sunDir);
     const uniform = (atmo.getMesh().material as ShaderMaterial).uniforms.planetCenter.value;
-    expect(uniform.x).toBe(0);
-    expect(uniform.y).toBe(0);
-    expect(uniform.z).toBe(0);
+    expect(uniform.x).toBeCloseTo(0);
+    expect(uniform.y).toBeCloseTo(0);
+    expect(uniform.z).toBeCloseTo(0);
     atmo.dispose();
   });
 

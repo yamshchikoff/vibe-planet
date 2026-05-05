@@ -54,23 +54,25 @@ describe('Sun', () => {
 
   it('update wraps around (full rotation completes)', () => {
     const sun = new Sun();
-    // Record direction after one full cycle
-    const fullRotation = (Math.PI * 2) / 0.05; // dt needed for angle to reach 2π
+    sun.update(0); // initialize direction
+    const angularSpeed = 0.05;
+    const totalAngle = Math.PI * 2;
+    const steps = 200;
+    const dtPerStep = totalAngle / angularSpeed / steps;
     const dirInitial = sun.getDirection().clone();
-    for (let i = 0; i < Math.ceil(fullRotation); i++) {
-      sun.update(1);
+    for (let i = 0; i < steps; i++) {
+      sun.update(dtPerStep);
     }
     const dirFinal = sun.getDirection().clone();
-    // Should be close to initial (full cycle)
     expect(dirInitial.distanceTo(dirFinal)).toBeLessThan(0.01);
     sun.dispose();
   });
 
   it('light intensity varies with sun height above horizon', () => {
     const sun = new Sun();
+    sun.update(0); // initialize direction and intensity
     const y = sun.getDirection().y;
     const expectedBase = 0.3 + 0.7 * Math.max(0, y);
-    // Intensity = 1.5 * (0.3 + 0.7 * max(0, sun.y_direction))
     expect(sun.getLight().intensity).toBeCloseTo(1.5 * expectedBase, 2);
     sun.dispose();
   });
