@@ -78,6 +78,9 @@ Cube-sphere с квадродеревом: 6 граней куба, каждая
 
 ### Biome Mapping (by normalized height + latitude)
 
+Biomes are blended smoothly — colors interpolate via smoothstep between adjacent thresholds,
+eliminating hard seams at chunk boundaries.
+
 | Height | Biome | Color |
 |--------|-------|-------|
 | < 0.1 | Deep Water | #1a3d6b |
@@ -89,6 +92,7 @@ Cube-sphere с квадродеревом: 6 граней куба, каждая
 | 0.85 – 1.0 | Snow | #f0f0f0 |
 
 Выше 60° широты: snow threshold смещается вниз (полярные шапки).
+Переходы между биомами — плавные (smoothstep, без if/else-скачков).
 
 ### API
 
