@@ -8,29 +8,29 @@ export class PlaneVisual {
     this.group = new Group();
     this.group.scale.set(8, 8, 8);
 
-    // Fuselage
-    const body = this.part(2.5, 0.35, 0.35, '#5a5a5a');
-    body.position.set(0.2, 0, 0);
+    // Fuselage (along Z axis, nose at -Z)
+    const body = this.part(0.35, 0.35, 2.5, '#5a5a5a');
+    body.position.set(0, 0, -0.2);
 
     // Nose
-    const nose = this.part(0.3, 0.25, 0.25, '#4a4a4a');
-    nose.position.set(1.35, 0, 0);
+    const nose = this.part(0.25, 0.25, 0.3, '#4a4a4a');
+    nose.position.set(0, 0, -1.35);
 
     // Cockpit
-    const cockpit = this.part(0.4, 0.12, 0.2, '#88ccff');
-    cockpit.position.set(0.6, 0.2, 0);
+    const cockpit = this.part(0.2, 0.12, 0.4, '#88ccff');
+    cockpit.position.set(0, 0.2, -0.6);
 
-    // Main wings (swept by positioning at slight angle or just wide span)
-    const wings = this.part(0.08, 0.04, 4.0, '#6a6a6a');
-    wings.position.set(-0.1, -0.05, 0);
+    // Main wings (span along X axis)
+    const wings = this.part(4.0, 0.04, 0.08, '#6a6a6a');
+    wings.position.set(0, -0.05, 0.1);
 
     // Horizontal stabilizers (tail wings)
-    const tailWings = this.part(0.08, 0.04, 1.2, '#6a6a6a');
-    tailWings.position.set(-0.8, -0.03, 0);
+    const tailWings = this.part(1.2, 0.04, 0.08, '#6a6a6a');
+    tailWings.position.set(0, -0.03, 0.8);
 
     // Vertical stabilizer (tail fin)
-    const tailFin = this.part(0.08, 0.6, 0.3, '#5a5a5a');
-    tailFin.position.set(-0.7, 0.3, 0);
+    const tailFin = this.part(0.3, 0.6, 0.08, '#5a5a5a');
+    tailFin.position.set(0, 0.3, 0.7);
 
     this.group.add(body, nose, cockpit, wings, tailWings, tailFin);
   }
