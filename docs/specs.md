@@ -144,8 +144,8 @@ class LODPlanet {
 
 ```
 GRAVITY = 0.0098 (km/с²)
-MAX_THRUST = 0.5 (km/с²)
-DRAG_COEFF = 0.001
+MAX_THRUST = 10.0 (km/с²)
+DRAG_COEFF = 0.02
 LIFT_COEFF = 0.00008
 THROTTLE_RATE = 2.0 (единиц/с)
 ROLL_RATE = 2.0 (рад/с)
