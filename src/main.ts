@@ -3,6 +3,7 @@ import { SceneManager } from './scene/SceneManager';
 import { PlanetGenerator } from './planet/PlanetGenerator';
 import { FlightModel } from './flight/FlightModel';
 import { KeyboardControls } from './controls/KeyboardControls';
+import { PlaneVisual } from './plane/PlaneVisual';
 import { DirectionalLight, AmbientLight } from 'three';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
@@ -28,13 +29,18 @@ scene.getScene().add(mesh);
 const flight = new FlightModel(10);
 const controls = new KeyboardControls();
 
-// Camera follow
+// Plane visual
+const plane = new PlaneVisual();
+scene.getScene().add(plane.getMesh());
+
+// Camera follow + plane visual update
 scene.onUpdate((_dt) => {
   const state = flight.getState();
   const [px, py, pz] = state.position;
-  const { yaw } = state.orientation;
+  const { yaw, pitch, roll } = state.orientation;
 
-  // Camera behind and above the plane
+  plane.update([px, py, pz], yaw, pitch, roll);
+
   const camDist = 25;
   const camHeight = 8;
   const cosYaw = Math.cos(yaw);
@@ -55,6 +61,19 @@ scene.onUpdate((dt) => {
   flight.applyControls(input);
   flight.update(dt);
 });
+
+// Controls overlay toggle
+const overlay = document.getElementById('controls-help');
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyH' && overlay) {
+    overlay.classList.toggle('visible');
+  }
+});
+
+// Auto-hide overlay after 5s
+if (overlay) {
+  setTimeout(() => overlay.classList.remove('visible'), 5000);
+}
 
 // Start
 controls.attach();
