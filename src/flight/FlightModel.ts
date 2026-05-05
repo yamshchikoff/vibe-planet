@@ -2,9 +2,9 @@ import { Quaternion, Vector3, Euler } from 'three';
 import type { FlightState, ControlInput } from './types';
 
 const GRAVITY = 0.0098;
-const MAX_THRUST = 10.0;
-const DRAG_COEFF = 0.02;
-const THROTTLE_RATE = 2.0;
+const MAX_THRUST = 0.1;
+const DRAG_COEFF = 0.08;
+const THROTTLE_RATE = 4.0;
 const ROLL_RATE = 2.0;
 const PITCH_RATE = 2.0;
 const YAW_RATE = 0.5;
@@ -30,10 +30,10 @@ export class FlightModel {
   private initialState(): FlightState {
     return {
       position: [0, this.planetRadius + START_ALTITUDE, 0],
-      velocity: [0, 0, -8],
+      velocity: [0, 0, -0.5],
       orientation: { yaw: 0, pitch: 0, roll: 0 },
-      throttle: 0,
-      speed: 8,
+      throttle: 0.2,
+      speed: 0.5,
     };
   }
 

@@ -51,8 +51,8 @@ const cam = scene.getCamera();
 cam.fov = 75;
 cam.updateProjectionMatrix();
 
-// Camera offset from plane in local frame: 10km above (+Y), 20km behind (+Z)
-const _offset = new Vector3(0, 10, 20);
+// Camera offset from plane in local frame: 50m above (+Y), 200m behind (+Z)
+const _offset = new Vector3(0, 0.05, 0.2);
 
 // Game loop
 scene.onUpdate((dt) => {
@@ -70,7 +70,7 @@ scene.onUpdate((dt) => {
 
   // Rigid camera follow
   const q = plane.getMesh().quaternion;
-  _offset.set(0, 10, 20).applyQuaternion(q);
+  _offset.set(0, 0.05, 0.2).applyQuaternion(q);
   cam.position.set(px + _offset.x, py + _offset.y, pz + _offset.z);
   cam.quaternion.copy(q);
 
