@@ -1,4 +1,4 @@
-import { Scene, PerspectiveCamera, WebGLRenderer } from 'three';
+import { Scene, PerspectiveCamera, WebGLRenderer, Group } from 'three';
 
 type UpdateCallback = (dt: number) => void;
 
@@ -6,23 +6,36 @@ export class SceneManager {
   private scene: Scene;
   private camera: PerspectiveCamera;
   private renderer: WebGLRenderer;
+  private worldGroup: Group;
   private running = false;
   private rafId: number | null = null;
   private lastTime: number | null = null;
   private updateCallbacks: UpdateCallback[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
-    this.renderer = new WebGLRenderer({ canvas, antialias: true });
+    this.renderer = new WebGLRenderer({
+      canvas,
+      antialias: true,
+      logarithmicDepthBuffer: true,
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     this.scene = new Scene();
 
-    this.camera = new PerspectiveCamera(75, 1, 0.1, 1000);
-    this.camera.position.set(0, 5, 15);
-    this.camera.lookAt(0, 0, 0);
+    // Floating origin container: all world objects go here
+    // Each frame, worldGroup.position = -camera.position to keep camera near origin
+    this.worldGroup = new Group();
+    this.scene.add(this.worldGroup);
+
+    this.camera = new PerspectiveCamera(75, 1, 0.1, 200000);
+    this.camera.position.set(0, 6373, 0);
 
     this.resize();
     window.addEventListener('resize', this.resize);
+  }
+
+  getWorldGroup(): Group {
+    return this.worldGroup;
   }
 
   resize = (): void => {
@@ -41,6 +54,9 @@ export class SceneManager {
       this.updateCallbacks.forEach((cb) => cb(dt));
     }
     this.lastTime = time;
+
+    // Floating origin: keep camera at origin for rendering precision
+    this.worldGroup.position.copy(this.camera.position).negate();
 
     this.renderer.render(this.scene, this.camera);
     this.rafId = requestAnimationFrame(this.loop);

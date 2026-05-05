@@ -1,25 +1,25 @@
 import type { FlightState, ControlInput } from './types';
 
-const GRAVITY = 9.8;
-const MAX_THRUST = 15;
-const DRAG_COEFF = 0.02;
-const LIFT_COEFF = 0.08;
+const GRAVITY = 0.0098;
+const MAX_THRUST = 0.015;
+const DRAG_COEFF = 0.00002;
+const LIFT_COEFF = 0.00008;
 const THROTTLE_RATE = 2.0;
 const ROTATION_RATE = 2.0;
-const START_ALTITUDE = 15;
+const START_ALTITUDE = 2;
 
 export class FlightModel {
   private state: FlightState;
   private planetRadius: number;
 
-  constructor(planetRadius = 10) {
+  constructor(planetRadius = 6371) {
     this.planetRadius = planetRadius;
     this.state = this.initialState();
   }
 
   private initialState(): FlightState {
     return {
-      position: [0, this.planetRadius + START_ALTITUDE, this.planetRadius * 2],
+      position: [0, this.planetRadius + START_ALTITUDE, 0],
       velocity: [0, 0, -8],
       orientation: { yaw: 0, pitch: 0, roll: 0 },
       throttle: 0,
