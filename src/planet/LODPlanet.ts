@@ -45,6 +45,11 @@ const FACE_NORMALS = [
   new Vector3(0, 0, -1),
 ];
 
+// Faces where uvToDir produces inward-facing triangle normals.
+// The winding direction depends on how u/v map to the 3 axes per face.
+// Affected: faces where (sign===-1 && axis!==1) or (sign===1 && axis===1)
+const FACE_WINDING_FLIP = [false, true, true, false, false, true];
+
 const _tmpVec = new Vector3();
 
 type ChunkCacheEntry = {
@@ -283,8 +288,13 @@ export class LODPlanet {
         const b = j * verts + i + 1;
         const c = (j + 1) * verts + i;
         const d = (j + 1) * verts + i + 1;
-        indices.push(a, b, c);
-        indices.push(b, d, c);
+        if (FACE_WINDING_FLIP[faceIdx]) {
+          indices.push(a, c, b);
+          indices.push(c, d, b);
+        } else {
+          indices.push(a, b, c);
+          indices.push(b, d, c);
+        }
       }
     }
 
