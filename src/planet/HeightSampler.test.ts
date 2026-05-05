@@ -52,4 +52,22 @@ describe('HeightSampler', () => {
     const z = Math.cos(lat) * Math.sin(lon);
     expect(s.getHeight(x, y, z)).toBe(s.getHeightLatLon(lat, lon));
   });
+
+  it('covers full [0, 1] range across varied positions', () => {
+    const s = new HeightSampler(42);
+    let min = 1;
+    let max = 0;
+    for (let i = 0; i < 500; i++) {
+      const px = (i * 137 + 50) % 2000 - 1000;
+      const py = (i * 251 + 30) % 2000 - 1000;
+      const pz = (i * 373 + 70) % 2000 - 1000;
+      const h = s.getHeight(px, py, pz);
+      if (h < min) min = h;
+      if (h > max) max = h;
+    }
+    // Must reach low enough for ocean biomes
+    expect(min).toBeLessThan(0.3);
+    // Must reach high enough for mountain biomes
+    expect(max).toBeGreaterThan(0.7);
+  });
 });
