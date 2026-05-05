@@ -30,55 +30,107 @@ class SceneManager {
 - Окно меняет размер → слушатель `window.resize`, обновление камеры и рендерера
 - Потеря WebGL контекста → авто-восстановление (Three.js default handler)
 - Первый кадр: коллбэки onUpdate вызываются сразу (lastTime инициализируется при старте, а не в первом loop)
+- Большая сцена (радиус планеты 6371): WebGLRenderer включает logarithmicDepthBuffer
 
 ---
 
-## 2. PlanetGenerator (`src/planet/`)
+## 2. LODPlanet (`src/planet/`)
 
 ### Responsibility
-Генерирует процедурную планету: сферическую геометрию с шумовым смещением вершин и биомной раскраской.
+Ленивая процедурная генерация планеты земного типа с LOD.
+Cube-sphere с квадродеревом: 6 граней куба, каждая subdivided через quadtree.
+Только видимые и ближайшие к камере чанки генерируются.
+Сгенерированные чанки кэшируются на сессию (ключ = seed + quad-путь).
+
+### Scale
+- 1 unit = 1 km
+- Radius: 6371 (Earth radius)
+- Terrain amplitude: 0–8 units (0–8 km высота)
+- Spawn altitude: 2 units над поверхностью
+
+### LOD System
+
+```
+6 cube faces → quadtree per face
+  depth 0: вся грань (1 чанк)
+  depth d: 4^d чанков на грань, каждый 1/2^d ребра грани
+
+Каждый чанк-лист: меш с фиксированной сеткой (16×16 вершин)
+Мирный размер чанка на глубине d ≈ π·R / (2·2^d)
+```
+
+Глубина чанка выбирается по расстоянию от камеры до центра чанка:
+
+| Distance from surface | Max depth | Vertex spacing |
+|----------------------|-----------|---------------|
+| > 500 km | 3 | ~50 km |
+| 100–500 km | 5 | ~12 km |
+| 10–100 km | 7 | ~3 km |
+| 1–10 km | 9 | ~800 m |
+| < 1 km | 11 | ~200 m |
+
+### Height Function
+- 3D seeded hash → value noise
+- FBM 6 октав с затуханием 0.5
+- Высота нормализована в [0, 1], затем scaled к terrain amplitude
+- Детерминированна: seed + координаты → всегда тот же результат
+- Бесшовна: 3D noise не имеет UV-швов
+
+### Biome Mapping (by normalized height + latitude)
+
+| Height | Biome | Color |
+|--------|-------|-------|
+| < 0.1 | Deep Water | #1a3d6b |
+| 0.1 – 0.25 | Shallow Water | #2980b9 |
+| 0.25 – 0.3 | Sand/Beach | #d4a76a |
+| 0.3 – 0.55 | Grassland | #4a8c3f |
+| 0.55 – 0.7 | Forest | #2d5a27 |
+| 0.7 – 0.85 | Rock | #7a7a7a |
+| 0.85 – 1.0 | Snow | #f0f0f0 |
+
+Выше 60° широты: snow threshold смещается вниз (полярные шапки).
 
 ### API
 
 ```ts
-interface PlanetConfig {
-  radius: number;        // радиус сферы (default: 10)
-  segments: number;      // детализация сетки (default: 64)
-  noiseOctaves: number;  // октавы фрактального шума (default: 6)
-  noiseScale: number;    // масштаб шума (default: 2.0)
-  heightAmplitude: number; // амплитуда смещения вершин (default: 1.5)
-  seed: number;          // сид для воспроизводимости (default: random)
+interface LODConfig {
+  planetRadius: number;      // default: 6371
+  seed: number;              // default: random
+  heightAmplitude: number;   // default: 8
+  maxDepth: number;          // max quadtree depth, default: 12
+  maxChunks: number;         // cache size, default: 1000
+  chunkResolution: number;   // вершин на ребро чанка, default: 16
 }
 
-class PlanetGenerator {
-  constructor(config?: Partial<PlanetConfig>)
-  generate(): THREE.Mesh        // создаёт меш планеты
-  getHeightAt(lat: number, lon: number): number  // высота в точке (для коллизий)
-  regenerate(): void            // перегенерировать с новым сидом
-  dispose(): void               // освободить GPU ресурсы
+class LODPlanet {
+  constructor(config?: Partial<LODConfig>)
+  getMesh(): THREE.Group              // группа со всеми активными чанками
+  update(cameraPos: THREE.Vector3): void // обновление LOD
+  getHeightAt( worldPos: THREE.Vector3 ): number  // высота в точке (коллизии)
+  dispose(): void                     // освободить всё
 }
 ```
 
-### Biome Mapping (by normalized height)
+### Caching
 
-| Height Range | Biome | Color |
-|-------------|-------|-------|
-| < 0.0 | Water | #1a5276 |
-| 0.0 – 0.05 | Sand/Beach | #d4a76a |
-| 0.05 – 0.4 | Grass | #2e7d32 |
-| 0.4 – 0.7 | Rock | #616a6b |
-| 0.7 – 1.0 | Snow | #f0f0f0 |
+- Map<string, ChunkData> — ключ `f{d}-d{depth}-{x}-{y}`
+- ChunkData: { mesh, material, geometry, lastAccess }
+- LRU: при превышении maxChunks, удаляются самые старые неиспользуемые
+- При удалении: geometry.dispose(), material.dispose()
+- При повторном запросе того же ключа: возвращается кэш (та же геометрия)
 
 ### States
-- **empty**: не было generate()
-- **generated**: меш создан и в сцене
-- **disposed**: ресурсы освобождены
+- **idle**: создан, не обновлялся, ни одного чанка
+- **active**: чанки генерируются/обновляются
+- **disposed**: все ресурсы освобождены
 
 ### Edge Cases
-- Сегментов < 4 → clamp к 4
-- Нулевой радиус → fallback к 1
-- Размер геометрии > 2M вершин → предупреждение в консоль
-- getHeightAt вне диапазона широты/долготы → clamp
+- Камера под поверхностью → генерация продолжается (может вылезти наружу)
+- Пустой кэш при первом обновлении → генерация корневых чанков
+- Высота > maxDepth → clamp к maxDepth
+- Планета радиуса 0 → fallback к 1
+- Камера очень далеко (> 10× radius) → только depth 0–1
+- Утечка памяти: LRU не даёт превысить maxChunks
 
 ---
 
@@ -86,17 +138,19 @@ class PlanetGenerator {
 
 ### Responsibility
 Упрощённая физика самолёта с фиксированным шагом обновления.
+Масштаб: 1 unit = 1 km. Планета земного типа, радиус 6371 km.
 
 ### Constants
 
 ```
-GRAVITY = 9.8 (единиц/с²)
-MAX_THRUST = 15 (единиц/с²)
-DRAG_COEFF = 0.02
-LIFT_COEFF = 0.08
+GRAVITY = 0.0098 (km/с²)
+MAX_THRUST = 0.015 (km/с²)
+DRAG_COEFF = 0.00002
+LIFT_COEFF = 0.00008
 THROTTLE_RATE = 2.0 (единиц/с)
 ROTATION_RATE = 2.0 (рад/с)
-PLANET_RADIUS = 10
+PLANET_RADIUS = 6371
+START_ALTITUDE = 2 (km)
 ```
 
 ### Physics Model (simplified)
@@ -129,11 +183,11 @@ class FlightModel {
 ```
 
 ### Initial State
-- Position: `[0, planetRadius + 15, planetRadius * 2]` — над поверхностью планеты с видом на неё
-- Velocity: `[0, 0, -8]` — движение в сторону планеты (по оси -Z к началу координат)
+- Position: `[0, planetRadius + START_ALTITUDE, 0]` — над северным полюсом
+- Velocity: `[0, 0, -8]` — тангенциально поверхности (к экватору)
 - Orientation: yaw=0, pitch=0, roll=0
 - Throttle: 0 (планирование)
-- Speed: 8 (крейсерская)
+- Speed: 8 km/с (крейсерская)
 
 ### Collision
 - Минимальная высота = `PLANET_RADIUS`
@@ -187,32 +241,74 @@ class KeyboardControls {
 ## 5. Atmosphere (`src/atmosphere/`)
 
 ### Responsibility
-Пост-обработка: скайбокс/атмосферное рассеяние, облачный слой.
+Атмосферное рассеяние (shader-based), скайбокс, облачный слой.
+Рендерится как fullscreen post-process или сфера вокруг планеты.
 
 ### API
 
 ```ts
 interface AtmosphereConfig {
-  planetRadius: number;
-  atmosphereHeight: number;  // default: radius * 0.1
+  planetRadius: number;         // default: 6371
+  atmosphereHeight: number;     // default: 80 (80 km)
 }
 
 class Atmosphere {
   constructor(config: AtmosphereConfig)
   getMesh(): THREE.Mesh           // сфера атмосферы
-  update(cameraPos: THREE.Vector3): void  // обновление uniform-ов
+  update(cameraPos: THREE.Vector3, sunDir: THREE.Vector3): void  // uniform-ы
   dispose(): void
 }
 ```
 
+### Scattering Model
+- Rayleigh scattering (синий цвет) + Mie scattering (дымка)
+- Inscattering цвет зависит от угла солнце-камера
+- Прозрачность: от поверхности (непрозрачно) до края (прозрачно)
+- Камера внутри атмосферы: корректный цвет неба во все стороны
+
 ### Cloud Layer
-- Прозрачная сфера поверх планеты
-- Шумовая текстура сферы как альфа-маска
+- Прозрачная сфера поверх планеты на высоте 5–10 km
+- Шумовая 2D текстура как альфа-маска
 - Медленное вращение (отдельное от планеты)
 
 ### Edge Cases
 - Камера внутри атмосферы → корректный цвет неба
 - Камера снаружи → прозрачная атмосфера
+- Большая высота (> 200 km) → атмосфера не рендерится
+
+---
+
+## 5b. Sun (`src/atmosphere/Sun.ts`)
+
+### Responsibility
+Солнечное освещение сцены. DirectionalLight + визуальный диск солнца.
+
+### API
+
+```ts
+interface SunConfig {
+  inclination: number;  // угол к оси планеты (default: 0.41 ≈ 23.5°)
+  longitude: number;    // долгота, default: 0
+}
+
+class Sun {
+  constructor(config?: Partial<SunConfig>)
+  getLight(): THREE.DirectionalLight     // свет для сцены
+  getDirection(): THREE.Vector3          // направление на солнце (world)
+  update(time: number): void             // вращение по времени
+  dispose(): void
+}
+```
+
+### Поведение
+- DirectionalLight с интенсивностью 1.5
+- Цвет: #fff5e6 (тёплый белый)
+- Вращается вокруг планеты по времени (полный оборот = 120 секунд демо-времени)
+- Солнечный диск: спрайт или меш на бесконечности (далеко за атмосферой)
+
+### Edge Cases
+- Солнце за горизонтом → AmbientLight минимальный
+- Переход день/ночь → плавная интерполяция интенсивности
 
 ---
 

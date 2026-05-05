@@ -150,8 +150,11 @@ planet/
 
 1. Update controls state (getInput snapshot)
 2. Step flight physics (dt из requestAnimationFrame, capped 30fps min)
-3. Update camera (20 м позади, 10 м выше самолёта, взгляд по направлению полёта)
-4. Render planet с освещением (DirectionalLight + AmbientLight)
+3. Update LODPlanet: traverse quadtree, split/merge по расстоянию, generate/ cache chunks
+4. Update camera (20 км позади, 10 км выше самолёта, взгляд по направлению полёта)
+5. Floating origin: worldGroup.position = -camera.position (камера в origin)
+6. Update Atmosphere + Sun uniforms
+7. Render planet chunks → atmosphere → (в перспективе clouds)
 
 ### Camera
 
@@ -159,22 +162,33 @@ planet/
 - Позиция: 20 м позади (+Z), 10 м выше (+Y) в локальной системе самолёта
 - Ориентация: идентична ориентации самолёта (кватернион копируется напрямую)
 - Камера жёстко привязана к локальной системе самолёта: при крене, тангаже и рыскании камера движется вместе с самолётом, сохраняя фиксированное относительное положение
+- Floating origin: каждый кадр worldGroup смещается на -camera.position, камера в начале координат
+
+## Scale
+
+- 1 unit = 1 km
+- Planet radius: 6371 (Earth radius)
+- Spawn altitude: 2 km над поверхностью полюса
+- Скорость самолёта: 8 km/с (крейсерская)
 
 ## Performance
 
-Текущая цель — 60 FPS на десктопе. Сегментация планеты: 48×48.
+Текущая цель — 60 FPS на десктопе. Chunked LOD с cube-sphere.
+Максимум 500–1000 чанков в кэше (LRU). Вершин на чанк: 16×16.
 
 ## Implementation Status
 
 | Модуль | Статус | Тесты |
 |--------|--------|-------|
 | SceneManager | ✅ | 7 |
-| PlanetGenerator | ✅ | 8 |
-| FlightModel | ✅ | 10 |
+| PlanetGenerator | ❌ заменён | — |
+| FlightModel | ✅ | 17 |
 | KeyboardControls | ✅ | 10 |
-| Atmosphere | 📋 план | — |
+| LODPlanet | 🚧 | план |
+| HeightSampler | 🚧 | план |
+| Atmosphere | 🚧 | план |
+| Sun | 🚧 | план |
 | GamepadControls | 📋 план | — |
-| LOD | 📋 план | — |
 
 ## Edge Cases
 
