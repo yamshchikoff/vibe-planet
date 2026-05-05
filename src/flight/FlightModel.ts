@@ -6,7 +6,10 @@ const MAX_THRUST = 0.015;
 const DRAG_COEFF = 0.00002;
 const LIFT_COEFF = 0.00008;
 const THROTTLE_RATE = 2.0;
-const ROTATION_RATE = 2.0;
+const ROLL_RATE = 2.0;
+const PITCH_RATE = 2.0;
+const YAW_RATE = 0.5;
+const COORD_TURN_RATE = 0.6;
 const START_ALTITUDE = 2;
 
 export class FlightModel {
@@ -60,23 +63,22 @@ export class FlightModel {
 
     if (input.pitch === 0 && input.yaw === 0 && input.roll === 0) return;
 
-    const angle = ROTATION_RATE * dt;
-
-    // Yaw around world Y (left-multiply) — always turns horizontally, no roll coupling
+    // Yaw around world Y (left-multiply) — gentle rudder, no roll coupling
     if (input.yaw !== 0) {
       this._axis.set(0, 1, 0);
-      this._dq.setFromAxisAngle(this._axis, input.yaw * angle);
+      this._dq.setFromAxisAngle(this._axis, input.yaw * YAW_RATE * dt);
       this.quat.premultiply(this._dq);
     }
-    // Roll and pitch in local body frame — right-multiply
+    // Roll in local body frame (ailerons)
     if (input.roll !== 0) {
       this._axis.set(0, 0, 1);
-      this._dq.setFromAxisAngle(this._axis, input.roll * angle);
+      this._dq.setFromAxisAngle(this._axis, input.roll * ROLL_RATE * dt);
       this.quat.multiply(this._dq);
     }
+    // Pitch in local body frame (elevator)
     if (input.pitch !== 0) {
       this._axis.set(1, 0, 0);
-      this._dq.setFromAxisAngle(this._axis, input.pitch * angle);
+      this._dq.setFromAxisAngle(this._axis, input.pitch * PITCH_RATE * dt);
       this.quat.multiply(this._dq);
     }
 
@@ -94,6 +96,17 @@ export class FlightModel {
   update(dt: number): void {
     const throttle = this.state.throttle;
     let speed = this.state.speed;
+
+    // Coordinated turn: bank angle produces smooth heading change
+    this._euler.setFromQuaternion(this.quat, 'XYZ');
+    const bank = this._euler.z;
+    if (Math.abs(bank) > 0.02) {
+      const turnRate = COORD_TURN_RATE * Math.sin(bank);
+      this._axis.set(0, 1, 0);
+      this._dq.setFromAxisAngle(this._axis, turnRate * dt);
+      this.quat.premultiply(this._dq);
+      this.quat.normalize();
+    }
 
     // Forward and up vectors in world space from orientation quaternion
     this._forward.set(0, 0, -1).applyQuaternion(this.quat);
