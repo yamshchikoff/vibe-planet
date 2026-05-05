@@ -52,7 +52,7 @@ cam.fov = 75;
 cam.updateProjectionMatrix();
 
 // Chase camera state — smooth follow, 15m above, 40m behind in local frame
-const _camOffset = new Vector3(0, 0.015, 0.04);
+const _camOffset = new Vector3(0, 0.015, 0.02);
 const _camPos = new Vector3();
 
 // Game loop
@@ -71,7 +71,7 @@ scene.onUpdate((dt) => {
 
   // Smooth chase camera: position behind/above in plane's local frame, look at plane
   const q = plane.getMesh().quaternion;
-  _camOffset.set(0, 0.015, 0.04).applyQuaternion(q);
+  _camOffset.set(0, 0.015, 0.02).applyQuaternion(q);
   const targetX = px + _camOffset.x;
   const targetY = py + _camOffset.y;
   const targetZ = pz + _camOffset.z;

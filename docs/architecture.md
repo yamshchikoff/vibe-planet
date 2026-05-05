@@ -194,7 +194,7 @@ planet/
 1. Update controls state (getInput snapshot)
 2. Step flight physics (dt из requestAnimationFrame, capped 30fps min)
 3. Update LODPlanet: traverse quadtree, split/merge по расстоянию, generate/ cache chunks
-4. Update camera (40 м позади, 15 м выше самолёта, lookAt на самолёт)
+4. Update camera (20 м позади, 15 м выше самолёта, lookAt на самолёт)
 5. Floating origin: worldGroup.position = -camera.position, затем camera.position = (0, 0, 0).  
    Таким образом Three.js view matrix translate(-camera.position) = identity,  
    и рендер происходит в системе координат worldGroup (объекты смещены относительно камеры).  
@@ -206,7 +206,7 @@ planet/
 ### Camera
 
 - FOV: 75° (стандартный для flight sim)
-- Позиция: 40 м позади (+Z), 15 м выше (+Y) в локальной системе самолёта
+- Позиция: 20 м позади (+Z), 15 м выше (+Y) в локальной системе самолёта
 - Ориентация: независимая от самолёта — всегда смотрит на самолёт (lookAt)
 - Smooth follow: плавная интерполяция позиции (lerp, factor 6 dt⁻¹), без рывков
 - При крене и тангаже самолёта камера не заваливается — stays upright, plane always centred
