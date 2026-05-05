@@ -49,6 +49,7 @@ worldGroup.add(plane.getMesh());
 // Camera
 const cam = scene.getCamera();
 cam.fov = 85;
+cam.near = 0.001; // 1m near plane for close chase camera
 cam.updateProjectionMatrix();
 
 // Chase camera offset: 6m above (+Y), 15m behind (+Z) in plane's local frame
