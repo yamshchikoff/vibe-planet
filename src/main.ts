@@ -33,6 +33,11 @@ const controls = new KeyboardControls();
 const plane = new PlaneVisual();
 scene.getScene().add(plane.getMesh());
 
+// Camera FOV
+const cam = scene.getCamera();
+cam.fov = 120;
+cam.updateProjectionMatrix();
+
 // Camera follow + plane visual update
 scene.onUpdate((_dt) => {
   const state = flight.getState();
@@ -41,18 +46,26 @@ scene.onUpdate((_dt) => {
 
   plane.update([px, py, pz], yaw, pitch, roll);
 
-  const camDist = 25;
-  const camHeight = 8;
+  const camDist = 20;
+  const camHeight = 10;
   const cosYaw = Math.cos(yaw);
   const sinYaw = Math.sin(yaw);
+  const cosPitch = Math.cos(pitch);
+  const sinPitch = Math.sin(pitch);
 
-  const camX = px - sinYaw * camDist;
-  const camZ = pz - cosYaw * camDist;
+  // Forward direction of the plane
+  const fwdX = -sinYaw * cosPitch;
+  const fwdZ = -cosYaw * cosPitch;
+  const fwdY = sinPitch;
+
+  // Camera behind and above the plane
+  const camX = px - fwdX * camDist;
+  const camZ = pz - fwdZ * camDist;
   const camY = py + camHeight;
 
-  const cam = scene.getCamera();
   cam.position.set(camX, camY, camZ);
-  cam.lookAt(px, py, pz);
+  // Look in the direction the plane is flying, parallel to its longitudinal axis
+  cam.lookAt(px + fwdX * 50, py + fwdY * 50, pz + fwdZ * 50);
 });
 
 // Physics + controls update
@@ -69,11 +82,6 @@ window.addEventListener('keydown', (e) => {
     overlay.classList.toggle('visible');
   }
 });
-
-// Auto-hide overlay after 5s
-if (overlay) {
-  setTimeout(() => overlay.classList.remove('visible'), 5000);
-}
 
 // Start
 controls.attach();
