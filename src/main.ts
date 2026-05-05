@@ -48,10 +48,10 @@ worldGroup.add(plane.getMesh());
 
 // Camera
 const cam = scene.getCamera();
-cam.fov = 75;
+cam.fov = 85;
 cam.updateProjectionMatrix();
 
-// Chase camera state — smooth follow, 15m above, 40m behind in local frame
+// Chase camera state — smooth follow, 15m above, 20m behind in local frame
 const _camOffset = new Vector3(0, 0.015, 0.02);
 const _camPos = new Vector3();
 
@@ -76,7 +76,7 @@ scene.onUpdate((dt) => {
   const targetY = py + _camOffset.y;
   const targetZ = pz + _camOffset.z;
 
-  const t = 1 - Math.exp(-6 * dt);
+  const t = 1 - Math.exp(-20 * dt);
   if (_camPos.lengthSq() === 0) {
     _camPos.set(targetX, targetY, targetZ);
   } else {
