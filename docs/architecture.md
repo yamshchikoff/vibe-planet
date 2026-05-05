@@ -91,7 +91,7 @@ docs:  sync specs with actual implementation
 ### LODPlanet (`src/planet/`) — IMPLEMENTED
 - **Geometry**: cube-sphere с квадродеревом (6 граней куба, quadtree subdivision)
 - **LOD**: split по расстоянию от камеры, maxDepth 12, effectiveDepth снижается с высотой
-- **Height map**: 3D seeded value noise FBM (6 октав, scale 200), детерминированно
+- **Height map**: 3D seeded value noise FBM (12 октав, scale 200, gain 0.5), детерминированно
 - **Terrain amplitude**: 0–8 km (normalized noise [0, 1] × heightAmplitude)
 - **Coloring**: биомы по нормализованной высоте + широте (vertex colors); границы возмущены 3D FBM domain warp для фрактальных изолиний
 - **Caching**: LRU-кэш чанков (max 1000), ключ = `f{face}-d{depth}-{x}-{y}`
@@ -99,7 +99,7 @@ docs:  sync specs with actual implementation
 
 ### HeightSampler (`src/planet/`) — IMPLEMENTED
 - 3D value noise с hash-функцией и seed-ом
-- FBM: lacunarity 2.0, gain 0.5, 6 октав
+- FBM: lacunarity 2.0, gain 0.5, 12 октав (фрактальная поверхность с деталью до ~100 м)
 - Выход: normalized [0, 1]
 - Бесшовный (3D noise, нет UV-швов)
 
