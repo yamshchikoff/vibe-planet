@@ -13,7 +13,9 @@ describe('FlightModel', () => {
   describe('initial state', () => {
     it('starts above ground with forward speed', () => {
       const state = flight.getState();
-      expect(state.position[1]).toBeGreaterThan(6371); // above planet radius
+      const [px, py, pz] = state.position;
+      const dist = Math.sqrt(px * px + py * py + pz * pz);
+      expect(dist).toBeGreaterThan(6371); // above planet surface
       expect(state.speed).toBeGreaterThan(0);
     });
 
@@ -28,7 +30,7 @@ describe('FlightModel', () => {
       expect(flight.getState().throttle).toBe(0.2);
     });
 
-    it('starts at north pole (z = 0), flying toward equator', () => {
+    it('starts on the surface (z = 0), flying tangentially', () => {
       const state = flight.getState();
       expect(state.position[2]).toBe(0);
     });
@@ -146,7 +148,7 @@ describe('FlightModel', () => {
     });
 
   describe('ground collision', () => {
-    it('does not go below ground level (y < planetRadius)', () => {
+    it('does not go below planet surface (radial distance)', () => {
       flight.applyControls({ pitch: -1, yaw: 0, roll: 0, throttle: 0 });
       // Let it fall for a while (nose down + no throttle)
       for (let i = 0; i < 300; i++) {
@@ -154,7 +156,9 @@ describe('FlightModel', () => {
         flight.update(1 / 60);
       }
       const state = flight.getState();
-      expect(state.position[1]).toBeGreaterThanOrEqual(6371); // planet radius
+      const [px, py, pz] = state.position;
+      const dist = Math.sqrt(px * px + py * py + pz * pz);
+      expect(dist).toBeGreaterThanOrEqual(6371);
     });
   });
 
