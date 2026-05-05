@@ -38,8 +38,9 @@ const atmosphere = new Atmosphere({
 });
 worldGroup.add(atmosphere.getMesh());
 
-// Flight model + controls
-const flight = new FlightModel(6371);
+// Flight model + controls — spawn above highest mountain (seed 91, lat=20°, lon=0°, 6.64 km)
+const MOUNTAIN_POS: [number, number, number] = [5993.87, 2181.71, 0];
+const flight = new FlightModel(6371, MOUNTAIN_POS);
 const controls = new KeyboardControls();
 
 // Plane visual

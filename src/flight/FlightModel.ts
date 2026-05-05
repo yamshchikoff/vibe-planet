@@ -14,6 +14,7 @@ const START_ALTITUDE = 2;
 export class FlightModel {
   private state: FlightState;
   private planetRadius: number;
+  private spawnPosition: [number, number, number];
   private quat: Quaternion;
   // Pre-allocated temporaries
   private _dq = new Quaternion();
@@ -21,15 +22,16 @@ export class FlightModel {
   private _forward = new Vector3();
   private _axis = new Vector3();
 
-  constructor(planetRadius = 6371) {
+  constructor(planetRadius = 6371, spawnPosition?: [number, number, number]) {
     this.planetRadius = planetRadius;
+    this.spawnPosition = spawnPosition ?? [0, planetRadius + START_ALTITUDE, 0];
     this.quat = new Quaternion();
     this.state = this.initialState();
   }
 
   private initialState(): FlightState {
     return {
-      position: [0, this.planetRadius + START_ALTITUDE, 0],
+      position: [...this.spawnPosition],
       velocity: [0, 0, -0.5],
       orientation: { yaw: 0, pitch: 0, roll: 0 },
       throttle: 0.2,
@@ -121,14 +123,19 @@ export class FlightModel {
     speed += accFwd * dt;
     if (speed < 0) speed = 0;
 
-    const [x, y, z] = this.state.position;
-    const newX = x + this._forward.x * speed * dt;
-    const newZ = z + this._forward.z * speed * dt;
+    let [x, y, z] = this.state.position;
+    let newX = x + this._forward.x * speed * dt;
+    let newZ = z + this._forward.z * speed * dt;
     let newY = y + this._forward.y * speed * dt;
 
-    // Ground collision
-    if (newY < this.planetRadius) {
-      newY = this.planetRadius;
+    // Ground collision — distance from planet center
+    const dist = Math.sqrt(newX * newX + newY * newY + newZ * newZ);
+    if (dist < this.planetRadius) {
+      const scale = this.planetRadius / dist;
+      newX *= scale;
+      newY *= scale;
+      newZ *= scale;
+      speed *= 0.99;
     }
 
     this.state.speed = speed;
@@ -143,5 +150,10 @@ export class FlightModel {
   reset(): void {
     this.quat.identity();
     this.state = this.initialState();
+  }
+
+  /** Set spawn position for next reset */
+  setSpawn(position: [number, number, number]): void {
+    this.spawnPosition = position;
   }
 }
