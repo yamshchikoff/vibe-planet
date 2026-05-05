@@ -6,6 +6,8 @@ import { Sun } from './atmosphere/Sun';
 import { FlightModel } from './flight/FlightModel';
 import { KeyboardControls } from './controls/KeyboardControls';
 import { PlaneVisual } from './plane/PlaneVisual';
+import { ChaseCamera } from './camera/ChaseCamera';
+import { FlightDebug } from './debug/FlightDebug';
 import { Vector3 } from 'three';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
@@ -42,6 +44,7 @@ worldGroup.add(atmosphere.getMesh());
 const MOUNTAIN_POS: [number, number, number] = [5993.87, 2181.71, 0];
 const flight = new FlightModel(6371, MOUNTAIN_POS);
 const controls = new KeyboardControls();
+const debug = new FlightDebug(flight);
 
 // Plane visual
 const plane = new PlaneVisual();
@@ -53,16 +56,22 @@ cam.fov = 85;
 cam.near = 0.001; // 1m near plane for close chase camera
 cam.updateProjectionMatrix();
 
-// Chase camera offset: 6m above (+Y), 15m behind (+Z) in plane's local frame
-const _camOffset = new Vector3(0, 0.006, 0.015);
+// Chase camera
+const chaseCamera = new ChaseCamera(cam, {
+  offset: [0, 0.006, 0.015],
+  lerpSpeed: 0.3,
+});
 
 // Game loop
 scene.onUpdate((dt) => {
   sun.update(dt);
 
-  const input = controls.getInput();
+  const input = debug.getPatternName() === 'MANUAL'
+    ? controls.getInput()
+    : debug.getControls();
   flight.applyControls(input);
   flight.update(dt);
+  debug.update();
 
   const state = flight.getState();
   const [px, py, pz] = state.position;
@@ -70,11 +79,8 @@ scene.onUpdate((dt) => {
 
   plane.update([px, py, pz], yaw, pitch, roll);
 
-  // Chase camera — behind/above in plane's local frame, lookAt (no roll coupling)
-  const q = plane.getMesh().quaternion;
-  _camOffset.set(0, 0.006, 0.015).applyQuaternion(q);
-  cam.position.set(px + _camOffset.x, py + _camOffset.y, pz + _camOffset.z);
-  cam.lookAt(px, py, pz);
+  // Chase camera — smooth follow behind/above plane
+  chaseCamera.update(new Vector3(px, py, pz), plane.getMesh().quaternion, dt);
 
   // LOD updates use actual camera position
   planet.update(cam.position);
@@ -89,6 +95,12 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'KeyU') {
     atmosphere.getMesh().visible = !atmosphere.getMesh().visible;
+  }
+  if (e.code === 'KeyT') {
+    debug.nextPattern();
+  }
+  if (e.code === 'KeyR') {
+    flight.reset();
   }
 });
 
