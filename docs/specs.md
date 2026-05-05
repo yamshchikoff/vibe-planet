@@ -146,7 +146,6 @@ class LODPlanet {
 GRAVITY = 0.0098 (km/с²)
 MAX_THRUST = 10.0 (km/с²)
 DRAG_COEFF = 0.02
-LIFT_COEFF = 0.00008
 THROTTLE_RATE = 2.0 (единиц/с)
 ROLL_RATE = 2.0 (рад/с)
 PITCH_RATE = 2.0 (рад/с)
@@ -204,28 +203,27 @@ Throttle 1 → скорость растёт до ~16 km/с за ~1 с (резк
 
 ### Physics Model (simplified, 3D)
 
-Силы раскладываются по векторам forward и localUp, полученным из кватерниона ориентации:
+Самолёт движется строго в направлении продольной оси (forward):
 
 ```
 forward = (0, 0, -1) × q  (мир. система)
-localUp = (0, 1, 0) × q   (мир. система)
 
 thrust = throttle * MAX_THRUST          // вдоль forward
 drag = DRAG_COEFF * speed²              // против forward
-lift_mag = LIFT_COEFF * speed²          // вдоль localUp
-gravity = GRAVITY                       // вдоль -Y мира
-
-// Проекция сил
 grav_along_forward = GRAVITY * forward.y
-lift_vertical = lift_mag * localUp.y
 
 acceleration_forward = thrust - drag - grav_along_forward
-acceleration_vertical = lift_vertical - GRAVITY
 
-// Интеграция
+// Интеграция скорости
 speed += acceleration_forward * dt
-position += forward * speed * dt + Y * acceleration_vertical * dt
+
+// Позиция и скорость — строго вдоль forward
+position += forward * speed * dt
+velocity = forward * speed
 ```
+
+Вектор скорости всегда совпадает с продольной осью самолёта — бокового скольжения нет.
+Вертикальное движение определяется проекцией forward на мировую Y (forward.y).
 
 При крене lift_vertical уменьшается (localUp.y < 1), самолёт теряет высоту,
 если не скомпенсировать тангажом.
