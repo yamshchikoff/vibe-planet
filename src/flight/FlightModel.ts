@@ -1,7 +1,8 @@
 import { Quaternion, Vector3, Euler } from 'three';
 import type { FlightState, ControlInput } from './types';
 
-const SPEED_CRUISE = 2.0;    // km/s — фиксированная скорость движения
+const SPEED_STEPS = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64]; // km/s — логарифмическая шкала
+const SPEED_CRUISE = 2.0;    // km/s — крейсерская скорость по умолчанию
 const THROTTLE_RATE = 4.0;   // 0 → 1 за ~0.25 с
 const ROLL_RATE = 1.5;       // rad/s
 const PITCH_RATE = 0.8;      // rad/s
@@ -14,6 +15,7 @@ export class FlightModel {
   private planetRadius: number;
   private spawnPosition: [number, number, number];
   private throttleInput: -1 | 0 | 1;
+  private cruiseSpeed: number;
   // Pre-allocated temporaries
   private _dq = new Quaternion();
   private _euler = new Euler();
@@ -24,6 +26,7 @@ export class FlightModel {
     this.planetRadius = planetRadius;
     this.spawnPosition = spawnPosition ?? [0, planetRadius + START_ALTITUDE, 0];
     this.quat = new Quaternion();
+    this.cruiseSpeed = SPEED_CRUISE;
     this.throttleInput = 0;
     this.state = this.initialState();
     this.alignToSurface();
@@ -91,7 +94,7 @@ export class FlightModel {
       this.state.throttle = this.throttleInput;
     }
 
-    const speed = this.state.throttle * SPEED_CRUISE;
+    const speed = this.state.throttle * this.cruiseSpeed;
 
     // Forward direction from orientation
     this._forward.set(0, 0, -1).applyQuaternion(this.quat);
@@ -135,5 +138,21 @@ export class FlightModel {
 
   setSpawn(position: [number, number, number]): void {
     this.spawnPosition = position;
+  }
+
+  getCruiseSpeed(): number {
+    return this.cruiseSpeed;
+  }
+
+  /** Change cruise speed along logarithmic scale (×2 or ÷2 per step) */
+  changeSpeed(direction: -1 | 0 | 1): void {
+    const idx = SPEED_STEPS.indexOf(this.cruiseSpeed);
+    if (idx === -1) {
+      // If current speed is not in the list (shouldn't happen), snap to nearest
+      this.cruiseSpeed = SPEED_STEPS[Math.round(Math.log2(this.cruiseSpeed) + 3)];
+      return;
+    }
+    const newIdx = Math.max(0, Math.min(SPEED_STEPS.length - 1, idx + direction));
+    this.cruiseSpeed = SPEED_STEPS[newIdx];
   }
 }

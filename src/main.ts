@@ -102,6 +102,12 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR') {
     flight.reset();
   }
+  if (e.code === 'BracketRight') {
+    flight.changeSpeed(1);
+  }
+  if (e.code === 'BracketLeft') {
+    flight.changeSpeed(-1);
+  }
 });
 
 // Start

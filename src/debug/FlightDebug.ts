@@ -69,7 +69,7 @@ export class FlightDebug {
 
     this.hud.textContent =
       `[${PATTERNS[this.patternIdx].name}]  frame ${this.frameCount}\n` +
-      `spd ${s.speed.toFixed(3)} km/s  thr ${(s.throttle * 100).toFixed(0)}%\n` +
+      `spd ${s.speed.toFixed(3)} km/s  max ${this.flight.getCruiseSpeed().toFixed(3)} km/s  thr ${(s.throttle * 100).toFixed(0)}%\n` +
       `alt ${altitude.toFixed(2)} km  rad ${radial.toFixed(1)} km\n` +
       `yaw ${(s.orientation.yaw * 180 / Math.PI).toFixed(1)}°  ` +
       `pit ${(s.orientation.pitch * 180 / Math.PI).toFixed(1)}°  ` +
