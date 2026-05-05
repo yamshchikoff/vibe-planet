@@ -19,7 +19,7 @@ export class FlightModel {
 
   private initialState(): FlightState {
     return {
-      position: [0, this.planetRadius + START_ALTITUDE, -this.planetRadius * 2],
+      position: [0, this.planetRadius + START_ALTITUDE, this.planetRadius * 2],
       velocity: [0, 0, -8],
       orientation: { yaw: 0, pitch: 0, roll: 0 },
       throttle: 0,

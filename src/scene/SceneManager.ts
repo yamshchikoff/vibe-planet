@@ -49,7 +49,7 @@ export class SceneManager {
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.lastTime = null;
+    this.lastTime = performance.now();
     this.rafId = requestAnimationFrame(this.loop);
   }
 
