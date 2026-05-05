@@ -71,6 +71,9 @@ docs:  sync specs with actual implementation
 │  │  │  Model    │──│  (Keyboard)    │  │  │
 │  │  └──────────┘  └────────────────┘  │  │
 │  │  ┌────────────────────────────────┐  │  │
+│  │  │  PlaneVisual                   │  │  │
+│  │  └────────────────────────────────┘  │  │
+│  │  ┌────────────────────────────────┐  │  │
 │  │  │  Atmosphere + Sun              │  │  │
 │  │  │  (shader scattering)           │  │  │
 │  │  └────────────────────────────────┘  │  │
@@ -112,6 +115,12 @@ docs:  sync specs with actual implementation
 - Сброс всех клавиш при потере фокуса (blur)
 - Противоположные клавиши компенсируются (net sum = 0)
 
+### PlaneVisual (`src/plane/`) — IMPLEMENTED
+- Визуализация самолёта из примитивов Three.js (BoxGeometry)
+- Масштаб: 8×8×8 (метры, но в km-scale выглядит как точка — достаточно для LOD-камеры)
+- Позиционирование через update(position, yaw, pitch, roll)
+- Шесть частей: фюзеляж, нос, кабина, крылья, хвостовые стабилизаторы, киль
+
 ### Atmosphere (`src/atmosphere/`) — IMPLEMENTED
 - **Scattering**: шейдерный атмосферный скейтеринг (BackSide сфера, rim lighting + sun angle)
 - **Parameters**: planetRadius 6371, atmosphereHeight 80 km
@@ -128,6 +137,8 @@ docs:  sync specs with actual implementation
 
 ```
 User Input → KeyboardControls → FlightModel → position/orientation
+                                                         ↓
+                                          PlaneVisual.update(pos, yaw, pitch, roll)
                                                          ↓
 SceneManager.onUpdate → camera follow → LODPlanet.update(cameraPos)
                                            Atmosphere.update(cameraPos, sunDir)
@@ -157,6 +168,9 @@ planet/
 │   │   ├── LODPlanet.test.ts
 │   │   ├── PlanetGenerator.ts    # replaced by LODPlanet
 │   │   └── PlanetGenerator.test.ts
+│   ├── plane/
+│   │   ├── PlaneVisual.ts
+│   │   └── PlaneVisual.test.ts
 │   ├── atmosphere/
 │   │   ├── Atmosphere.ts
 │   │   ├── Sun.ts
@@ -211,12 +225,13 @@ planet/
 
 | Модуль | Статус | Тесты |
 |--------|--------|-------|
-| SceneManager | ✅ | 7 |
+| SceneManager | ✅ | 12 |
 | PlanetGenerator | ❌ заменён | — |
-| FlightModel | ✅ | 17 |
+| FlightModel | ✅ | 15 |
 | KeyboardControls | ✅ | 10 |
-| LODPlanet | ✅ | 8 |
-| HeightSampler | ✅ | 5 |
+| LODPlanet | ✅ | 10 |
+| HeightSampler | ✅ | 6 |
+| PlaneVisual | ✅ | 5 |
 | Atmosphere | ✅ | — |
 | Sun | ✅ | — |
 | GamepadControls | 📋 план | — |
