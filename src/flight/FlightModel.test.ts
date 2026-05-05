@@ -27,6 +27,11 @@ describe('FlightModel', () => {
     it('starts with zero throttle', () => {
       expect(flight.getState().throttle).toBe(0);
     });
+
+    it('starts at positive Z so planet is ahead (z > 0)', () => {
+      const state = flight.getState();
+      expect(state.position[2]).toBeGreaterThan(0);
+    });
   });
 
   describe('throttle', () => {
