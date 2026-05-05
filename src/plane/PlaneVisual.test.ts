@@ -28,6 +28,13 @@ describe('PlaneVisual', () => {
     pv.dispose();
   });
 
+  it('nose points in -Z direction (forward)', () => {
+    const pv = new PlaneVisual();
+    const minZ = Math.min(...pv.getMesh().children.map(c => c.position.z));
+    expect(minZ).toBeLessThan(0);
+    pv.dispose();
+  });
+
   it('dispose does not throw', () => {
     const pv = new PlaneVisual();
     pv.getMesh();
