@@ -56,7 +56,7 @@ export class HeightSampler {
 
   constructor(
     seed: number,
-    octaves = 6,
+    octaves = 12,
     lacunarity = 2.0,
     gain = 0.5,
     scale = 200
