@@ -70,4 +70,60 @@ describe('HeightSampler', () => {
     // Must reach high enough for mountain biomes
     expect(max).toBeGreaterThan(0.7);
   });
+
+  describe('getBiomeWarp', () => {
+    it('returns values in [-1, 1] range', () => {
+      const s = new HeightSampler(42);
+      for (let i = 0; i < 100; i++) {
+        const w = s.getBiomeWarp(i * 13, i * 7, i * 31, 3);
+        expect(w).toBeGreaterThanOrEqual(-1);
+        expect(w).toBeLessThanOrEqual(1);
+      }
+    });
+
+    it('is deterministic (same seed, same position, same octaves)', () => {
+      const a = new HeightSampler(42);
+      const b = new HeightSampler(42);
+      for (let i = 0; i < 20; i++) {
+        const px = Math.random() * 1000 - 500;
+        const py = Math.random() * 1000 - 500;
+        const pz = Math.random() * 1000 - 500;
+        expect(a.getBiomeWarp(px, py, pz, 4)).toBe(b.getBiomeWarp(px, py, pz, 4));
+      }
+    });
+
+    it('differs from height noise at same position (different seed offset)', () => {
+      const s = new HeightSampler(42);
+      let allSame = true;
+      for (let i = 0; i < 20; i++) {
+        const px = i * 53;
+        const py = i * 97;
+        const pz = i * 131;
+        if (s.getBiomeWarp(px, py, pz, 3) !== s.getHeight(px, py, pz)) {
+          allSame = false;
+          break;
+        }
+      }
+      expect(allSame).toBe(false);
+    });
+
+    it('more octaves produce more varied values', () => {
+      const s = new HeightSampler(42);
+      // With more octaves, the absolute values tend to spread more
+      // Sample at positions that align with interpolated noise cells
+      let maxDiffFew = 0;
+      let maxDiffMany = 0;
+      for (let i = 0; i < 50; i++) {
+        const px = i * 13 + 0.5;
+        const py = i * 7 + 0.5;
+        const pz = i * 31 + 0.5;
+        const w2 = s.getBiomeWarp(px, py, pz, 2);
+        const w6 = s.getBiomeWarp(px, py, pz, 6);
+        maxDiffFew = Math.max(maxDiffFew, Math.abs(w2));
+        maxDiffMany = Math.max(maxDiffMany, Math.abs(w6));
+      }
+      // 6 octaves should reach a wider range due to higher-frequency contributions
+      expect(maxDiffMany).toBeGreaterThanOrEqual(maxDiffFew);
+    });
+  });
 });

@@ -96,6 +96,48 @@ describe('LODPlanet', () => {
     p2.dispose();
   });
 
+  it('accepts biomeWarpAmplitude config', () => {
+    const p = new LODPlanet({ seed: 42, biomeWarpAmplitude: 0.1, maxDepth: 3, maxChunks: 50 });
+    p.update(new Vector3(0, 6375, 0));
+    expect(p.getMesh().children.length).toBeGreaterThan(0);
+    p.dispose();
+  });
+
+  it('biome warp changes vertex colors compared to no warp', () => {
+    const p1 = new LODPlanet({ seed: 42, biomeWarpAmplitude: 0, maxDepth: 3, maxChunks: 100 });
+    const p2 = new LODPlanet({ seed: 42, biomeWarpAmplitude: 0.2, maxDepth: 3, maxChunks: 100 });
+    const camPos = new Vector3(0, 6375, 0);
+    p1.update(camPos);
+    p2.update(camPos);
+
+    // Compare color attributes of first chunk
+    const children1 = p1.getMesh().children;
+    const children2 = p2.getMesh().children;
+    expect(children1.length).toBe(children2.length);
+    if (children1.length > 0) {
+      const mesh1 = children1[0] as Mesh;
+      const mesh2 = children2[0] as Mesh;
+      const colors1 = mesh1.geometry.getAttribute('color');
+      const colors2 = mesh2.geometry.getAttribute('color');
+      if (colors1 && colors2) {
+        let anyDiff = false;
+        for (let i = 0; i < colors1.count; i++) {
+          if (
+            colors1.getX(i) !== colors2.getX(i) ||
+            colors1.getY(i) !== colors2.getY(i) ||
+            colors1.getZ(i) !== colors2.getZ(i)
+          ) {
+            anyDiff = true;
+            break;
+          }
+        }
+        expect(anyDiff).toBe(true);
+      }
+    }
+    p1.dispose();
+    p2.dispose();
+  });
+
   it('triangle normals face outward from sphere center', () => {
     const p = new LODPlanet({ seed: 42, maxDepth: 3, maxChunks: 100 });
     p.update(new Vector3(0, 6375, 0));
