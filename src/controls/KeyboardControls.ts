@@ -16,8 +16,8 @@ const KEY_MAP: Record<string, keyof ControlInput> = {
 const KEY_SIGN: Record<string, number> = {
   KeyW: 1,
   KeyS: -1,
-  KeyA: -1,
-  KeyD: 1,
+  KeyA: 1,
+  KeyD: -1,
   KeyQ: -1,
   KeyE: 1,
   ShiftLeft: 1,

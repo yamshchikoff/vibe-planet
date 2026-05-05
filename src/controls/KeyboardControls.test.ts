@@ -65,7 +65,7 @@ describe('KeyboardControls', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
     expect(controls.getInput().pitch).toBe(1);
-    expect(controls.getInput().roll).toBe(-1);
+    expect(controls.getInput().roll).toBe(1);
 
     window.dispatchEvent(new FocusEvent('blur'));
     const input = controls.getInput();
@@ -96,11 +96,11 @@ describe('KeyboardControls', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' }));
 
-    // A = roll -1 (left wing down)
+    // A = roll +1 (left wing down)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
-    expect(controls.getInput().roll).toBe(-1);
+    expect(controls.getInput().roll).toBe(1);
 
-    // D = roll +1 (right wing down)
+    // D = roll -1 (right wing down)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
     expect(controls.getInput().roll).toBe(0);
 
