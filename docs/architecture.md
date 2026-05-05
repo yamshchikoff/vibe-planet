@@ -28,9 +28,9 @@
 | 3D-движок | Three.js | Де-факто стандарт для WebGL |
 | Язык | TypeScript | Типизация, автодополнение |
 | Сборка | Vite | Быстрая dev-сборка, HMR |
-| Тесты | Vitest | Совместимость с Vite, fast |
+| Тесты | Vitest + jsdom | Совместимость с Vite, окружение DOM |
 | Сервер | Vite dev server / static | Нет API, только статика |
-| Шейдеры | GLSL (RawShaderMaterial) | Процедурная генерация на GPU |
+| Шум | Value noise FBM (CPU) | Процедурная генерация рельефа |
 
 ## Architecture Overview
 
@@ -45,10 +45,11 @@
 │  │  └──────────┘  └────────────────┘  │  │
 │  │  ┌──────────┐  ┌────────────────┐  │  │
 │  │  │  Flight   │  │  Controls      │  │  │
-│  │  │  Model    │──│  (Input)       │  │  │
+│  │  │  Model    │──│  (Keyboard)    │  │  │
 │  │  └──────────┘  └────────────────┘  │  │
 │  │  ┌────────────────────────────────┐  │  │
 │  │  │  Atmosphere / Post-processing  │  │  │
+│  │  │  (TBD)                         │  │  │
 │  │  └────────────────────────────────┘  │  │
 │  └────────────────────────────────────┘  │
 └─────────────────────────────────────────┘
@@ -56,98 +57,98 @@
 
 ## Module Responsibilities
 
-### Scene Manager (`src/scene/`)
+### Scene Manager (`src/scene/`) — IMPLEMENTED
 - Инициализация Three.js (WebGLRenderer, Scene, Camera)
-- Группировка объектов (планета, самолёт, небо)
-- Рендер-луп с фиксированным шагом физики
+- Рендер-луп через requestAnimationFrame с фиксацией dt
+- Подписка onUpdate для кастомных хуков
 
-### Planet Generator (`src/planet/`)
-- **Geometry**: сфера с икосаэдрической подложкой, LOD
-- **Height map**: симплекс-шум + фрактальный Brownian Motion на GPU
-- **Coloring**: биомы по высоте/широте (вода, песок, трава, камень, снег)
-- **Vertex shader**: смещение вершин по карте высот
-- **Fragment shader**: заливка биомов + освещение
+### Planet Generator (`src/planet/`) — IMPLEMENTED
+- **Geometry**: сфера (SphereGeometry) со смещением вершин через value noise FBM
+- **Height map**: mulberry32 PRNG + билинейная интерполяция, CPU
+- **Coloring**: биомы по нормализованной высоте (вода → песок → трава → лес → камень → снег)
+- **Vertex colors**: через vertexColors на MeshStandardMaterial
 
-### Flight Model (`src/flight/`)
+### Flight Model (`src/flight/`) — IMPLEMENTED
 - Физика самолёта (упрощённая: тяга, подъёмная сила, гравитация, лобовое сопротивление)
-- Машина состояний (полёт, круиз, пике)
-- Привязка камеры (следящая камера от 3-го лица)
+- Начальное состояние: в воздухе, с крейсерской скоростью
+- Коллизия с поверхностью (clamp позиции, обнуление вертикальной скорости)
+- Сброс состояния
 
-### Controls (`src/controls/`)
-- Управление с клавиатуры (WASD + Q/E для кренов)
-- Поддержка геймпада (опционально)
-- Mouse look с зажатой ПКМ
+### Controls (`src/controls/`) — IMPLEMENTED
+- Управление с клавиатуры: W/S pitch, A/D yaw, Q/E roll, Shift/Ctrl throttle
+- attach/detach жизненный цикл
+- Сброс всех клавиш при потере фокуса (blur)
+- Противоположные клавиши компенсируются (net sum = 0)
 
-### Atmosphere (`src/atmosphere/`)
-- Рассеяние Рэлея (sky shader)
-- Слой облаков (2D-шум на сфере)
+### Atmosphere (`src/atmosphere/`) — TBD
 
 ## Data Flow
 
 ```
-User Input → Controls → Flight Model → Transform → Scene → Render
-                                      ↓
-                              Planet (static transform)
+User Input → KeyboardControls → FlightModel → position/orientation
+                                                         ↓
+SceneManager.onUpdate → camera follow → WebGLRenderer.render
+         ↓
+Planet (static mesh, generated once)
 ```
 
 ## Project Structure
 
 ```
 planet/
+├── CLAUDE.md
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   └── specs.md
 ├── src/
-│   ├── main.ts              # Entry point
-│   ├── types.ts              # Shared types
+│   ├── main.ts              # Entry point, wiring
+│   ├── style.css
 │   ├── scene/
 │   │   ├── SceneManager.ts
 │   │   └── SceneManager.test.ts
 │   ├── planet/
 │   │   ├── PlanetGenerator.ts
-│   │   ├── noise.glsl         # GPU noise functions
-│   │   ├── planet.vert.glsl   # Vertex displacement shader
-│   │   ├── planet.frag.glsl   # Fragment biome shader
 │   │   └── PlanetGenerator.test.ts
 │   ├── flight/
 │   │   ├── types.ts
 │   │   ├── FlightModel.ts
-│   │   ├── FlightModel.test.ts
-│   │   └── FlightModel.integration.test.ts
+│   │   └── FlightModel.test.ts
 │   ├── controls/
 │   │   ├── KeyboardControls.ts
-│   │   ├── KeyboardControls.test.ts
-│   │   └── GamepadControls.ts
-│   └── atmosphere/
-│       ├── Atmosphere.ts
-│       └── Atmosphere.test.ts
-├── public/
+│   │   └── KeyboardControls.test.ts
+│   └── atmosphere/          # TBD
 ├── index.html
 ├── package.json
 ├── tsconfig.json
-├── vite.config.ts
-└── vitest.config.ts
+└── vite.config.ts
 ```
 
 ## Rendering Pipeline
 
-1. Update controls state (input snapshot)
-2. Step flight physics (fixed timestep, 120Hz)
-3. Update camera (lerp to target position behind plane)
-4. Render planet (displacement shader runs on GPU)
-5. Render atmosphere/clouds
-6. Post-processing (bloom, vignette)
+1. Update controls state (getInput snapshot)
+2. Step flight physics (dt из requestAnimationFrame, capped 30fps min)
+3. Update camera (lookAt за позицией самолёта, сверху-сзади)
+4. Render planet с освещением (DirectionalLight + AmbientLight)
 
-## Performance Targets
+## Performance
 
-- **Desktop**: 60 FPS при полном LOD
-- **Mobile**: 30 FPS, пониженное качество шума
-- **Draw calls**: < 100
-- **Память**: < 256MB GPU
+Текущая цель — 60 FPS на десктопе. Сегментация планеты: 48×48.
 
-## Edge Cases / States
+## Implementation Status
 
-- Loading: спиннер/прогресс-бар при компиляции шейдеров
-- Empty: начальное состояние до загрузки
-- Error: падение WebGL → сообщение пользователю
-- Edge: облёт на высокой скорости — плавный LOD переход
-- Edge: уход под поверхность — отключение коллизии (проходим сквозь)
+| Модуль | Статус | Тесты |
+|--------|--------|-------|
+| SceneManager | ✅ | 7 |
+| PlanetGenerator | ✅ | 8 |
+| FlightModel | ✅ | 10 |
+| KeyboardControls | ✅ | 10 |
+| Atmosphere | 📋 план | — |
+| GamepadControls | 📋 план | — |
+| LOD | 📋 план | — |
+
+## Edge Cases
+
+- Ground collision: position clamped, vertical speed zeroed
+- Потеря фокуса: keyset cleared
+- Нулевой радиус планеты: fallback к 1
+- Сегментов < 4: clamp к 4

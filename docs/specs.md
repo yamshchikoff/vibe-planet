@@ -127,12 +127,11 @@ class FlightModel {
 
 ### Collision
 - Минимальная высота = `PLANET_RADIUS`
-- При касании: vertical_speed обнуляется, position clamp
+- При касании: vertical_speed обнуляется, position clamp. Горизонтальная скорость сохраняется.
+- Начальное состояние: в воздухе, с крейсерской скоростью (<code>speed &gt; 0</code>)
 
 ### States
-- **grounded**: y = radius, speed = 0
 - **flying**: y > radius, speed > 0
-- **stalling**: speed < minFlightSpeed (2.0)
 
 ---
 
