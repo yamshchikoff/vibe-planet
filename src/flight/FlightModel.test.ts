@@ -24,8 +24,8 @@ describe('FlightModel', () => {
       expect(state.orientation.roll).toBe(0);
     });
 
-    it('starts with zero throttle', () => {
-      expect(flight.getState().throttle).toBe(0);
+    it('starts with cruise throttle 0.2', () => {
+      expect(flight.getState().throttle).toBe(0.2);
     });
 
     it('starts at north pole (z = 0), flying toward equator', () => {
@@ -74,7 +74,7 @@ describe('FlightModel', () => {
     it('cruise throttle maintains speed within 10% over 2 seconds', () => {
       const initialSpeed = flight.getState().speed;
       for (let i = 0; i < 120; i++) {
-        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0.2 });
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0 });
         flight.update(1 / 60);
       }
       const speedChange = Math.abs(flight.getState().speed - initialSpeed);
@@ -275,7 +275,7 @@ describe('FlightModel', () => {
       const state = flight.getState();
       // After reset should be different from pre-reset
       expect(state.speed).not.toBe(preSpeed);
-      expect(state.throttle).toBe(0);
+      expect(state.throttle).toBe(0.2);
     });
   });
 });
