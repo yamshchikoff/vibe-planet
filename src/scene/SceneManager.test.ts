@@ -41,6 +41,11 @@ describe('SceneManager', () => {
     sm.stop();
   });
 
+  it('default FOV is 75 (flight sim standard)', () => {
+    expect(sm.getCamera().fov).toBe(75);
+    sm.stop();
+  });
+
   it('start begins the render loop', () => {
     expect(() => sm.start()).not.toThrow();
     sm.stop();
