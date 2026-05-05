@@ -7,16 +7,31 @@ export class PlaneVisual {
   constructor() {
     this.group = new Group();
 
-    const body = this.part(1.5, 0.3, 0.3, '#d0d0d0');
-    body.position.set(0, 0, 0);
+    // Fuselage
+    const body = this.part(2.5, 0.35, 0.35, '#5a5a5a');
+    body.position.set(0.2, 0, 0);
 
-    const wings = this.part(0.1, 0.05, 3.0, '#b0b0b0');
-    wings.position.set(0, 0, 0);
+    // Nose
+    const nose = this.part(0.3, 0.25, 0.25, '#4a4a4a');
+    nose.position.set(1.35, 0, 0);
 
-    const tail = this.part(0.3, 0.5, 0.1, '#909090');
-    tail.position.set(-0.6, 0.15, 0);
+    // Cockpit
+    const cockpit = this.part(0.4, 0.12, 0.2, '#88ccff');
+    cockpit.position.set(0.6, 0.2, 0);
 
-    this.group.add(body, wings, tail);
+    // Main wings (swept by positioning at slight angle or just wide span)
+    const wings = this.part(0.08, 0.04, 4.0, '#6a6a6a');
+    wings.position.set(-0.1, -0.05, 0);
+
+    // Horizontal stabilizers (tail wings)
+    const tailWings = this.part(0.08, 0.04, 1.2, '#6a6a6a');
+    tailWings.position.set(-0.8, -0.03, 0);
+
+    // Vertical stabilizer (tail fin)
+    const tailFin = this.part(0.08, 0.6, 0.3, '#5a5a5a');
+    tailFin.position.set(-0.7, 0.3, 0);
+
+    this.group.add(body, nose, cockpit, wings, tailWings, tailFin);
   }
 
   private part(w: number, h: number, d: number, color: string): Mesh {
