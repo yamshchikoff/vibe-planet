@@ -72,6 +72,30 @@ describe('FlightModel', () => {
       flight.update(1 / 60);
       expect(flight.getState().orientation.pitch).toBeGreaterThan(0);
     });
+
+    it('banked pitch causes horizontal turn (body-axis control)', () => {
+      // Roll 90° so local X (pitch axis) aligns with world Z
+      for (let i = 0; i < 50; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 1, throttle: 0 });
+        flight.update(1 / 60);
+      }
+      expect(flight.getState().orientation.roll).toBeGreaterThan(Math.PI / 2 - 0.1);
+
+      // Record X position after roll
+      const px0 = flight.getState().position[0];
+
+      // Pitch up while banked — body-axis pitch turns in horizontal plane
+      for (let i = 0; i < 60; i++) {
+        flight.applyControls({ pitch: 1, yaw: 0, roll: 0, throttle: 0.5 });
+        flight.update(1 / 60);
+      }
+
+      const dx = Math.abs(flight.getState().position[0] - px0);
+
+      // With body-axis controls, banking redirects pitch into world XZ
+      // With old world-axis controls, pitch only affects Y → dx ≈ 0
+      expect(dx).toBeGreaterThan(0.5);
+    });
   });
 
   describe('ground collision', () => {
@@ -137,10 +161,7 @@ describe('FlightModel', () => {
       const noseDir = new Vector3(0, 0, -1).applyQuaternion(pv.getMesh().quaternion);
       const moveDir = new Vector3(vx / speed, vy / speed, vz / speed);
 
-      // Roll should not desync nose from movement for same yaw/pitch
-      // FlightModel ignores roll for velocity, so the comparison is roll=0
-      // direction vs visual with roll — these CAN differ at high roll
-      // but the dot should still be positive (same general direction)
+      // Roll should not desync nose from movement: both come from same quaternion
       const dot = noseDir.dot(moveDir);
       expect(dot).toBeGreaterThan(0.5);
 
