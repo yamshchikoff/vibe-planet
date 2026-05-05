@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock WebGLRenderer before importing SceneManager
+const mockRenderer = vi.hoisted(() => ({
+  setSize: vi.fn(),
+  setPixelRatio: vi.fn(),
+  render: vi.fn(),
+  dispose: vi.fn(),
+}));
+
 vi.mock('three', async () => {
   const actual = await vi.importActual('three');
-  const mockRenderer = {
-    setSize: vi.fn(),
-    setPixelRatio: vi.fn(),
-    render: vi.fn(),
-    dispose: vi.fn(),
-  };
   return {
     ...(actual as object),
     WebGLRenderer: vi.fn(function () { return mockRenderer; }),
@@ -22,6 +22,7 @@ describe('SceneManager', () => {
   let sm: SceneManager;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     canvas = document.createElement('canvas');
     canvas.width = 800;
     canvas.height = 600;
@@ -69,5 +70,38 @@ describe('SceneManager', () => {
     const cb = vi.fn();
     expect(() => sm.onUpdate(cb)).not.toThrow();
     sm.stop();
+  });
+
+  describe('resize', () => {
+    it('resize updates renderer size to window dimensions', () => {
+      window.innerWidth = 1024;
+      window.innerHeight = 768;
+      sm.resize();
+      expect(mockRenderer.setSize).toHaveBeenCalledWith(1024, 768);
+    });
+
+    it('resize updates camera aspect ratio', () => {
+      window.innerWidth = 1024;
+      window.innerHeight = 768;
+      sm.resize();
+      const cam = sm.getCamera();
+      expect(cam.aspect).toBe(1024 / 768);
+    });
+
+    it('calls updateProjectionMatrix after resize', () => {
+      const cam = sm.getCamera();
+      const spy = vi.spyOn(cam, 'updateProjectionMatrix');
+      window.innerWidth = 1024;
+      window.innerHeight = 768;
+      sm.resize();
+      expect(spy).toHaveBeenCalled();
+    });
+
+    it('window resize event triggers SceneManager.resize', () => {
+      window.innerWidth = 1024;
+      window.innerHeight = 768;
+      window.dispatchEvent(new Event('resize'));
+      expect(mockRenderer.setSize).toHaveBeenCalledWith(1024, 768);
+    });
   });
 });
