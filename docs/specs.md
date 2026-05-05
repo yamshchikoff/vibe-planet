@@ -274,15 +274,16 @@ interface FlightState {
 Порядок Euler XYZ: pitch (X) → yaw (Y) → roll (Z).
 
 ### Initial State
-- Position: `[0, planetRadius + START_ALTITUDE, 0]` — над северным полюсом
+- Position: `[0, planetRadius + START_ALTITUDE, 0]` — по умолчанию над северным полюсом; конфигурируется через `spawnPosition` в конструкторе
 - Velocity: `[0, 0, -0.5]` — тангенциально поверхности (к экватору)
 - Orientation: yaw=0, pitch=0, roll=0 (identity quaternion)
 - Throttle: 0.2 (крейсерский режим, равновесие thrust = drag)
 - Speed: 0.5 km/с (~Mach 1.5)
 
 ### Collision
-- Минимальная высота = `PLANET_RADIUS`
-- При касании: position clamp. Горизонтальная скорость сохраняется.
+- Радиальная дистанция от центра планеты (не координата Y)
+- При касании: position clamp к сфере, скорость ×0.99
+- Работает в любой точке поверхности
 
 ### States
 - **flying**: y > radius, speed > 0
