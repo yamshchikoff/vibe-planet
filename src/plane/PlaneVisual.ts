@@ -6,6 +6,7 @@ export class PlaneVisual {
 
   constructor() {
     this.group = new Group();
+    this.group.scale.set(8, 8, 8);
 
     // Fuselage
     const body = this.part(2.5, 0.35, 0.35, '#5a5a5a');
