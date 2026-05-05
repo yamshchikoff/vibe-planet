@@ -62,7 +62,13 @@ export class FlightModel {
 
     const angle = ROTATION_RATE * dt;
 
-    // Local body-axis rotations — right-multiply: q = q * delta
+    // Yaw around world Y (left-multiply) — always turns horizontally, no roll coupling
+    if (input.yaw !== 0) {
+      this._axis.set(0, 1, 0);
+      this._dq.setFromAxisAngle(this._axis, input.yaw * angle);
+      this.quat.premultiply(this._dq);
+    }
+    // Roll and pitch in local body frame — right-multiply
     if (input.roll !== 0) {
       this._axis.set(0, 0, 1);
       this._dq.setFromAxisAngle(this._axis, input.roll * angle);
@@ -71,11 +77,6 @@ export class FlightModel {
     if (input.pitch !== 0) {
       this._axis.set(1, 0, 0);
       this._dq.setFromAxisAngle(this._axis, input.pitch * angle);
-      this.quat.multiply(this._dq);
-    }
-    if (input.yaw !== 0) {
-      this._axis.set(0, 1, 0);
-      this._dq.setFromAxisAngle(this._axis, input.yaw * angle);
       this.quat.multiply(this._dq);
     }
 
