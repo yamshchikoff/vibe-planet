@@ -15,7 +15,7 @@ describe('KeyboardControls', () => {
   it('starts detached with neutral input', () => {
     const input = controls.getInput();
     expect(input.pitch).toBe(0);
-    expect(input.yaw).toBe(0);
+    expect(input.roll).toBe(0);
     expect(input.roll).toBe(0);
     expect(input.throttle).toBe(0);
   });
@@ -38,7 +38,7 @@ describe('KeyboardControls', () => {
     controls.detach();
     const input = controls.getInput();
     expect(input.pitch).toBe(0);
-    expect(input.yaw).toBe(0);
+    expect(input.roll).toBe(0);
     expect(input.roll).toBe(0);
   });
 
@@ -65,12 +65,12 @@ describe('KeyboardControls', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
     expect(controls.getInput().pitch).toBe(1);
-    expect(controls.getInput().yaw).toBe(1);
+    expect(controls.getInput().roll).toBe(-1);
 
     window.dispatchEvent(new FocusEvent('blur'));
     const input = controls.getInput();
     expect(input.pitch).toBe(0);
-    expect(input.yaw).toBe(0);
+    expect(input.roll).toBe(0);
     controls.detach();
   });
 
@@ -96,25 +96,25 @@ describe('KeyboardControls', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' }));
 
-    // A = yaw +1
+    // A = roll -1 (left wing down)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
-    expect(controls.getInput().yaw).toBe(1);
+    expect(controls.getInput().roll).toBe(-1);
 
-    // D = yaw -1
+    // D = roll +1 (right wing down)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
-    expect(controls.getInput().yaw).toBe(0);
+    expect(controls.getInput().roll).toBe(0);
 
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA' }));
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' }));
 
-    // Q = roll -1
+    // Q = yaw -1 (rudder left)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ' }));
-    expect(controls.getInput().roll).toBe(-1);
+    expect(controls.getInput().yaw).toBe(-1);
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyQ' }));
 
-    // E = roll +1
+    // E = yaw +1 (rudder right)
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE' }));
-    expect(controls.getInput().roll).toBe(1);
+    expect(controls.getInput().yaw).toBe(1);
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyE' }));
 
     controls.detach();
