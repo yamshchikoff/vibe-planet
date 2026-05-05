@@ -12,6 +12,7 @@ class SceneManager {
   constructor(canvas: HTMLCanvasElement)
   start(): void               // запускает render loop
   stop(): void                // останавливает render loop
+  resize(): void              // подгоняет размер под window.innerWidth/Height
   getScene(): THREE.Scene
   getCamera(): THREE.PerspectiveCamera
   getRenderer(): THREE.WebGLRenderer
@@ -26,6 +27,7 @@ class SceneManager {
 
 ### Edge Cases
 - Canvas нулевого размера → ресайз при старте
+- Окно меняет размер → слушатель `window.resize`, обновление камеры и рендерера
 - Потеря WebGL контекста → авто-восстановление (Three.js default handler)
 
 ---
