@@ -63,16 +63,16 @@ docs:  sync specs with actual implementation
 │  ┌────────────────────────────────────┐  │
 │  │           main.ts                   │  │
 │  │  ┌──────────┐  ┌────────────────┐  │  │
-│  │  │  Scene    │  │  Planet        │  │  │
-│  │  │  Manager  │──│  Generator     │  │  │
+│  │  │  Scene    │  │  LODPlanet     │  │  │
+│  │  │  Manager  │──│  HeightSampler │  │  │
 │  │  └──────────┘  └────────────────┘  │  │
 │  │  ┌──────────┐  ┌────────────────┐  │  │
 │  │  │  Flight   │  │  Controls      │  │  │
 │  │  │  Model    │──│  (Keyboard)    │  │  │
 │  │  └──────────┘  └────────────────┘  │  │
 │  │  ┌────────────────────────────────┐  │  │
-│  │  │  Atmosphere / Post-processing  │  │  │
-│  │  │  (TBD)                         │  │  │
+│  │  │  Atmosphere + Sun              │  │  │
+│  │  │  (shader scattering)           │  │  │
 │  │  └────────────────────────────────┘  │  │
 │  └────────────────────────────────────┘  │
 └─────────────────────────────────────────┘
@@ -85,11 +85,20 @@ docs:  sync specs with actual implementation
 - Рендер-луп через requestAnimationFrame с фиксацией dt
 - Подписка onUpdate для кастомных хуков
 
-### Planet Generator (`src/planet/`) — IMPLEMENTED
-- **Geometry**: сфера (SphereGeometry) со смещением вершин через value noise FBM
-- **Height map**: mulberry32 PRNG + билинейная интерполяция, CPU
-- **Coloring**: биомы по нормализованной высоте (вода → песок → трава → лес → камень → снег)
-- **Vertex colors**: через vertexColors на MeshStandardMaterial
+### LODPlanet (`src/planet/`) — IMPLEMENTED
+- **Geometry**: cube-sphere с квадродеревом (6 граней куба, quadtree subdivision)
+- **LOD**: split по расстоянию от камеры, maxDepth 12, effectiveDepth снижается с высотой
+- **Height map**: 3D seeded value noise FBM (6 октав, scale 200), детерминированно
+- **Terrain amplitude**: 0–8 km (normalized noise [0, 1] × heightAmplitude)
+- **Coloring**: биомы по нормализованной высоте + широте (vertex colors)
+- **Caching**: LRU-кэш чанков (max 1000), ключ = `f{face}-d{depth}-{x}-{y}`
+- **Chunk resolution**: 16×16 вершин на чанк
+
+### HeightSampler (`src/planet/`) — IMPLEMENTED
+- 3D value noise с hash-функцией и seed-ом
+- FBM: lacunarity 2.0, gain 0.5, 6 октав
+- Выход: normalized [0, 1]
+- Бесшовный (3D noise, нет UV-швов)
 
 ### Flight Model (`src/flight/`) — IMPLEMENTED
 - Физика самолёта (упрощённая: тяга, подъёмная сила, гравитация, лобовое сопротивление)
@@ -103,16 +112,28 @@ docs:  sync specs with actual implementation
 - Сброс всех клавиш при потере фокуса (blur)
 - Противоположные клавиши компенсируются (net sum = 0)
 
-### Atmosphere (`src/atmosphere/`) — TBD
+### Atmosphere (`src/atmosphere/`) — IMPLEMENTED
+- **Scattering**: шейдерный атмосферный скейтеринг (BackSide сфера, rim lighting + sun angle)
+- **Parameters**: planetRadius 6371, atmosphereHeight 80 km
+- **Прозрачность**: затухание от поверхности до края атмосферы
+- **Интеграция**: получает направление солнца из Sun, обновляется каждый кадр
+
+### Sun (`src/atmosphere/`) — IMPLEMENTED
+- DirectionalLight + AmbientLight с дневным/ночным циклом
+- Полный оборот за 120 секунд демо-времени
+- Аксиальный наклон 23.5°
+- Плавная интерполяция интенсивности день/ночь
 
 ## Data Flow
 
 ```
 User Input → KeyboardControls → FlightModel → position/orientation
                                                          ↓
-SceneManager.onUpdate → camera follow → WebGLRenderer.render
-         ↓
-Planet (static mesh, generated once)
+SceneManager.onUpdate → camera follow → LODPlanet.update(cameraPos)
+                                           Atmosphere.update(cameraPos, sunDir)
+                                           Sun.update(dt)
+                                                         ↓
+                                    Floating origin → WebGLRenderer.render
 ```
 
 ## Project Structure
@@ -130,8 +151,15 @@ planet/
 │   │   ├── SceneManager.ts
 │   │   └── SceneManager.test.ts
 │   ├── planet/
-│   │   ├── PlanetGenerator.ts
+│   │   ├── HeightSampler.ts
+│   │   ├── HeightSampler.test.ts
+│   │   ├── LODPlanet.ts
+│   │   ├── LODPlanet.test.ts
+│   │   ├── PlanetGenerator.ts    # replaced by LODPlanet
 │   │   └── PlanetGenerator.test.ts
+│   ├── atmosphere/
+│   │   ├── Atmosphere.ts
+│   │   ├── Sun.ts
 │   ├── flight/
 │   │   ├── types.ts
 │   │   ├── FlightModel.ts
@@ -139,7 +167,6 @@ planet/
 │   ├── controls/
 │   │   ├── KeyboardControls.ts
 │   │   └── KeyboardControls.test.ts
-│   └── atmosphere/          # TBD
 ├── index.html
 ├── package.json
 ├── tsconfig.json
@@ -159,7 +186,7 @@ planet/
 ### Camera
 
 - FOV: 120°
-- Позиция: 20 м позади (+Z), 10 м выше (+Y) в локальной системе самолёта
+- Позиция: 20 км позади (+Z), 10 км выше (+Y) в локальной системе самолёта
 - Ориентация: идентична ориентации самолёта (кватернион копируется напрямую)
 - Камера жёстко привязана к локальной системе самолёта: при крене, тангаже и рыскании камера движется вместе с самолётом, сохраняя фиксированное относительное положение
 - Floating origin: каждый кадр worldGroup смещается на -camera.position, камера в начале координат
@@ -184,10 +211,10 @@ planet/
 | PlanetGenerator | ❌ заменён | — |
 | FlightModel | ✅ | 17 |
 | KeyboardControls | ✅ | 10 |
-| LODPlanet | 🚧 | план |
-| HeightSampler | 🚧 | план |
-| Atmosphere | 🚧 | план |
-| Sun | 🚧 | план |
+| LODPlanet | ✅ | 8 |
+| HeightSampler | ✅ | 5 |
+| Atmosphere | ✅ | — |
+| Sun | ✅ | — |
 | GamepadControls | 📋 план | — |
 
 ## Edge Cases
