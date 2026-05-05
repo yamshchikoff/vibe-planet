@@ -104,6 +104,7 @@ describe('Sun', () => {
 
   it('sun sprite position updates after update call', () => {
     const sun = new Sun();
+    sun.getSunSprite(); // trigger lazy creation
     sun.update(0);
     const pos = sun.getSunSprite().position;
     expect(pos.length()).toBeGreaterThan(0);
