@@ -1,66 +1,82 @@
 import './style.css';
 import { SceneManager } from './scene/SceneManager';
-import { PlanetGenerator } from './planet/PlanetGenerator';
+import { LODPlanet } from './planet/LODPlanet';
+import { Atmosphere } from './atmosphere/Atmosphere';
+import { Sun } from './atmosphere/Sun';
 import { FlightModel } from './flight/FlightModel';
 import { KeyboardControls } from './controls/KeyboardControls';
 import { PlaneVisual } from './plane/PlaneVisual';
-import { DirectionalLight, AmbientLight, Vector3 } from 'three';
+import { Vector3 } from 'three';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element #app not found');
 
-// Scene
+// Scene setup with floating origin
 const scene = new SceneManager(canvas);
+const worldGroup = scene.getWorldGroup();
 
-// Lights
-const sun = new DirectionalLight(0xffffff, 1.5);
-sun.position.set(50, 30, 20);
-scene.getScene().add(sun);
+// Sun — directional + ambient light with day/night cycle
+const sun = new Sun();
+scene.getScene().add(sun.getLight());
+scene.getScene().add(sun.getAmbient());
 
-const ambient = new AmbientLight(0x223355, 0.4);
-scene.getScene().add(ambient);
+// Planet — cube-sphere LOD with quadtree
+const planet = new LODPlanet({
+  planetRadius: 6371,
+  seed: 42,
+  heightAmplitude: 8,
+  maxDepth: 12,
+  maxChunks: 1000,
+  chunkResolution: 16,
+});
+worldGroup.add(planet.getMesh());
 
-// Planet
-const planet = new PlanetGenerator({ radius: 10, segments: 48, seed: 42 });
-const mesh = planet.generate();
-scene.getScene().add(mesh);
+// Atmosphere — shader-based scattering shell
+const atmosphere = new Atmosphere({
+  planetRadius: 6371,
+  atmosphereHeight: 80,
+});
+worldGroup.add(atmosphere.getMesh());
 
-// Flight
-const flight = new FlightModel(10);
+// Flight model + controls
+const flight = new FlightModel(6371);
 const controls = new KeyboardControls();
 
 // Plane visual
 const plane = new PlaneVisual();
-scene.getScene().add(plane.getMesh());
+worldGroup.add(plane.getMesh());
 
-// Camera FOV
+// Camera
 const cam = scene.getCamera();
 cam.fov = 120;
 cam.updateProjectionMatrix();
 
+// Camera offset from plane in local frame: 10km above (+Y), 20km behind (+Z)
 const _offset = new Vector3(0, 10, 20);
 
-// Camera follow — rigidly attached to plane's local frame
-scene.onUpdate((_dt) => {
+// Game loop
+scene.onUpdate((dt) => {
+  sun.update(dt);
+
+  const input = controls.getInput();
+  flight.applyControls(input);
+  flight.update(dt);
+
   const state = flight.getState();
   const [px, py, pz] = state.position;
   const { yaw, pitch, roll } = state.orientation;
 
   plane.update([px, py, pz], yaw, pitch, roll);
 
+  // Rigid camera follow
   const q = plane.getMesh().quaternion;
-
   _offset.set(0, 10, 20).applyQuaternion(q);
-
   cam.position.set(px + _offset.x, py + _offset.y, pz + _offset.z);
   cam.quaternion.copy(q);
-});
 
-// Physics + controls update
-scene.onUpdate((dt) => {
-  const input = controls.getInput();
-  flight.applyControls(input);
-  flight.update(dt);
+  // LOD updates use actual camera position
+  planet.update(cam.position);
+  atmosphere.update(cam.position, sun.getDirection());
 });
 
 // Controls overlay toggle
