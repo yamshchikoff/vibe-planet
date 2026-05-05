@@ -229,7 +229,7 @@ planet/
 |--------|--------|-------|
 | SceneManager | ✅ | 12 |
 | PlanetGenerator | ❌ заменён | — |
-| FlightModel | ✅ | 19 |
+| FlightModel | ✅ | 20 |
 | KeyboardControls | ✅ | 10 |
 | LODPlanet | ✅ | 10 |
 | HeightSampler | ✅ | 6 |

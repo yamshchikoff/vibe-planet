@@ -188,9 +188,9 @@ q *= q_y(turnRate * dt)
 
 Отклик самолёта на изменение газа:
 
-- **THROTTLE_RATE = 2.0**: throttle переводится из 0 → 1 за ~0.5 с непрерывного нажатия Shift
-- **MAX_THRUST = 10.0 (km/с²)**: максимальная тяга двигателя
-- **DRAG_COEFF = 0.02**: лобовое сопротивление (пропорционально v²)
+- **THROTTLE_RATE = 4.0**: throttle переводится из 0 → 1 за ~0.25 с непрерывного нажатия Shift
+- **MAX_THRUST = 0.1 (km/с²)**: максимальная тяга двигателя
+- **DRAG_COEFF = 0.08**: лобовое сопротивление (пропорционально v²)
 
 Ожидаемое поведение на крейсерской скорости (0.5 km/с, горизонт):
 
@@ -259,10 +259,10 @@ interface FlightState {
 
 ### Initial State
 - Position: `[0, planetRadius + START_ALTITUDE, 0]` — над северным полюсом
-- Velocity: `[0, 0, -8]` — тангенциально поверхности (к экватору)
+- Velocity: `[0, 0, -0.5]` — тангенциально поверхности (к экватору)
 - Orientation: yaw=0, pitch=0, roll=0 (identity quaternion)
-- Throttle: 0 (планирование)
-- Speed: 8 km/с (крейсерская)
+- Throttle: 0.2 (крейсерский режим, равновесие thrust = drag)
+- Speed: 0.5 km/с (~Mach 1.5)
 
 ### Collision
 - Минимальная высота = `PLANET_RADIUS`
