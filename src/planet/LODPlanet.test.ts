@@ -138,6 +138,27 @@ describe('LODPlanet', () => {
     p2.dispose();
   });
 
+  it('generated chunks have pbr attribute for per-vertex roughness/metalness', () => {
+    const p = new LODPlanet({ seed: 42, maxDepth: 3, maxChunks: 50 });
+    p.update(new Vector3(0, 6375, 0));
+    const children = p.getMesh().children;
+    expect(children.length).toBeGreaterThan(0);
+    for (const child of children) {
+      const mesh = child as Mesh;
+      const pbr = mesh.geometry.getAttribute('pbr');
+      expect(pbr).toBeDefined();
+      expect(pbr.itemSize).toBe(2); // roughness + metalness
+      // Values in [0, 1]
+      for (let i = 0; i < pbr.count; i++) {
+        expect(pbr.getX(i)).toBeGreaterThanOrEqual(0);
+        expect(pbr.getX(i)).toBeLessThanOrEqual(1);
+        expect(pbr.getY(i)).toBeGreaterThanOrEqual(0);
+        expect(pbr.getY(i)).toBeLessThanOrEqual(1);
+      }
+    }
+    p.dispose();
+  });
+
   it('triangle normals face outward from sphere center', () => {
     const p = new LODPlanet({ seed: 42, maxDepth: 3, maxChunks: 100 });
     p.update(new Vector3(0, 6375, 0));

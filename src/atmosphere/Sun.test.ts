@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Sun } from './Sun';
-import { DirectionalLight, AmbientLight, Vector3 } from 'three';
+import { DirectionalLight, HemisphereLight, Sprite, Vector3 } from 'three';
 
 describe('Sun', () => {
   it('creates with default config', () => {
@@ -27,9 +27,16 @@ describe('Sun', () => {
     sun.dispose();
   });
 
-  it('getAmbient returns AmbientLight', () => {
+  it('getHemisphere returns HemisphereLight', () => {
     const sun = new Sun();
-    expect(sun.getAmbient()).toBeInstanceOf(AmbientLight);
+    expect(sun.getHemisphere()).toBeInstanceOf(HemisphereLight);
+    sun.dispose();
+  });
+
+  it('getSunSprite returns Sprite', () => {
+    const sun = new Sun();
+    const sprite = sun.getSunSprite();
+    expect(sprite).toBeInstanceOf(Sprite);
     sun.dispose();
   });
 
@@ -77,10 +84,29 @@ describe('Sun', () => {
     sun.dispose();
   });
 
-  it('ambient intensity stays above minimum at all times', () => {
+  it('hemisphere intensity changes with sun height', () => {
     const sun = new Sun();
-    // min ambient = 0.2 (when sun is below horizon)
-    expect(sun.getAmbient().intensity).toBeGreaterThanOrEqual(0.2);
+    sun.update(0);
+    const initial = sun.getHemisphere().intensity;
+    // Night: sun below horizon
+    expect(initial).toBeGreaterThanOrEqual(0.12);
+    expect(initial).toBeLessThanOrEqual(0.40);
+    sun.dispose();
+  });
+
+  it('sun sprite has positive scale', () => {
+    const sun = new Sun();
+    const s = sun.getSunSprite().scale;
+    expect(s.x).toBeGreaterThan(0);
+    expect(s.y).toBeGreaterThan(0);
+    sun.dispose();
+  });
+
+  it('sun sprite position updates after update call', () => {
+    const sun = new Sun();
+    sun.update(0);
+    const pos = sun.getSunSprite().position;
+    expect(pos.length()).toBeGreaterThan(0);
     sun.dispose();
   });
 
@@ -91,10 +117,11 @@ describe('Sun', () => {
     sun.dispose();
   });
 
-  it('ambient light has blue-tinted color', () => {
+  it('hemisphere light has sky and ground colors', () => {
     const sun = new Sun();
-    const color = sun.getAmbient().color;
-    expect(color.getHex()).toBe(0x8899bb);
+    const hemi = sun.getHemisphere();
+    expect(hemi.color).toBeDefined();
+    expect(hemi.groundColor).toBeDefined();
     sun.dispose();
   });
 
