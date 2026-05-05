@@ -236,8 +236,8 @@ planet/
 | LODPlanet | ✅ | 10 |
 | HeightSampler | ✅ | 6 |
 | PlaneVisual | ✅ | 5 |
-| Atmosphere | ✅ | — |
-| Sun | ✅ | — |
+| Atmosphere | ✅ | 16 |
+| Sun | ✅ | 13 |
 | GamepadControls | 📋 план | — |
 
 ## Edge Cases
