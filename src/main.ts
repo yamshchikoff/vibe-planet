@@ -4,7 +4,7 @@ import { PlanetGenerator } from './planet/PlanetGenerator';
 import { FlightModel } from './flight/FlightModel';
 import { KeyboardControls } from './controls/KeyboardControls';
 import { PlaneVisual } from './plane/PlaneVisual';
-import { DirectionalLight, AmbientLight } from 'three';
+import { DirectionalLight, AmbientLight, Euler, Vector3 } from 'three';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element #app not found');
@@ -38,7 +38,11 @@ const cam = scene.getCamera();
 cam.fov = 120;
 cam.updateProjectionMatrix();
 
-// Camera follow + plane visual update
+const _euler = new Euler(0, 0, 0, 'XYZ');
+const _offset = new Vector3(0, 10, 20);
+const _fwd = new Vector3(0, 0, -1);
+
+// Camera follow — rigidly attached to plane's local frame
 scene.onUpdate((_dt) => {
   const state = flight.getState();
   const [px, py, pz] = state.position;
@@ -46,26 +50,15 @@ scene.onUpdate((_dt) => {
 
   plane.update([px, py, pz], yaw, pitch, roll);
 
-  const camDist = 20;
-  const camHeight = 10;
-  const cosYaw = Math.cos(yaw);
-  const sinYaw = Math.sin(yaw);
-  const cosPitch = Math.cos(pitch);
-  const sinPitch = Math.sin(pitch);
+  _euler.set(pitch, yaw, roll);
+  _offset.set(0, 10, 20);
+  _offset.applyEuler(_euler);
 
-  // Forward direction of the plane
-  const fwdX = -sinYaw * cosPitch;
-  const fwdZ = -cosYaw * cosPitch;
-  const fwdY = sinPitch;
+  _fwd.set(0, 0, -1);
+  _fwd.applyEuler(_euler);
 
-  // Camera behind and above the plane
-  const camX = px - fwdX * camDist;
-  const camZ = pz - fwdZ * camDist;
-  const camY = py + camHeight;
-
-  cam.position.set(camX, camY, camZ);
-  // Look in the direction the plane is flying, parallel to its longitudinal axis
-  cam.lookAt(px + fwdX * 50, py + fwdY * 50, pz + fwdZ * 50);
+  cam.position.set(px + _offset.x, py + _offset.y, pz + _offset.z);
+  cam.lookAt(px + _fwd.x * 50, py + _fwd.y * 50, pz + _fwd.z * 50);
 });
 
 // Physics + controls update
