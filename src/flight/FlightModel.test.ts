@@ -98,6 +98,27 @@ describe('FlightModel', () => {
     });
   });
 
+    it("banked aircraft turns smoothly without yaw input (coordinated turn)", () => {
+      // Roll to ~45° bank
+      for (let i = 0; i < 30; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 1, throttle: 0 });
+        flight.update(1 / 60);
+      }
+      expect(Math.abs(flight.getState().orientation.roll)).toBeGreaterThan(0.5);
+
+      // Heading before coordinated turn
+      const yaw0 = flight.getState().orientation.yaw;
+
+      // Step forward with NO controls — coordinated turn should change heading
+      for (let i = 0; i < 60; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0.5 });
+        flight.update(1 / 60);
+      }
+
+      const dyaw = Math.abs(flight.getState().orientation.yaw - yaw0);
+      expect(dyaw).toBeGreaterThan(0.1);
+    });
+
   describe('ground collision', () => {
     it('does not go below ground level (y < planetRadius)', () => {
       flight.applyControls({ pitch: -1, yaw: 0, roll: 0, throttle: 0 });
