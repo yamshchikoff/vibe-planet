@@ -4,7 +4,7 @@ import { PlanetGenerator } from './planet/PlanetGenerator';
 import { FlightModel } from './flight/FlightModel';
 import { KeyboardControls } from './controls/KeyboardControls';
 import { PlaneVisual } from './plane/PlaneVisual';
-import { DirectionalLight, AmbientLight, Euler, Vector3 } from 'three';
+import { DirectionalLight, AmbientLight, Vector3 } from 'three';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element #app not found');
@@ -38,9 +38,7 @@ const cam = scene.getCamera();
 cam.fov = 120;
 cam.updateProjectionMatrix();
 
-const _euler = new Euler(0, 0, 0, 'XYZ');
 const _offset = new Vector3(0, 10, 20);
-const _fwd = new Vector3(0, 0, -1);
 
 // Camera follow — rigidly attached to plane's local frame
 scene.onUpdate((_dt) => {
@@ -50,15 +48,12 @@ scene.onUpdate((_dt) => {
 
   plane.update([px, py, pz], yaw, pitch, roll);
 
-  _euler.set(pitch, yaw, roll);
-  _offset.set(0, 10, 20);
-  _offset.applyEuler(_euler);
+  const q = plane.getMesh().quaternion;
 
-  _fwd.set(0, 0, -1);
-  _fwd.applyEuler(_euler);
+  _offset.set(0, 10, 20).applyQuaternion(q);
 
   cam.position.set(px + _offset.x, py + _offset.y, pz + _offset.z);
-  cam.lookAt(px + _fwd.x * 50, py + _fwd.y * 50, pz + _fwd.z * 50);
+  cam.quaternion.copy(q);
 });
 
 // Physics + controls update
