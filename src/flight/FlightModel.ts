@@ -4,7 +4,6 @@ import type { FlightState, ControlInput } from './types';
 const GRAVITY = 0.0098;
 const MAX_THRUST = 10.0;
 const DRAG_COEFF = 0.02;
-const LIFT_COEFF = 0.00008;
 const THROTTLE_RATE = 2.0;
 const ROLL_RATE = 2.0;
 const PITCH_RATE = 2.0;
@@ -20,7 +19,6 @@ export class FlightModel {
   private _dq = new Quaternion();
   private _euler = new Euler();
   private _forward = new Vector3();
-  private _localUp = new Vector3();
   private _axis = new Vector3();
 
   constructor(planetRadius = 6371) {
@@ -108,19 +106,15 @@ export class FlightModel {
       this.quat.normalize();
     }
 
-    // Forward and up vectors in world space from orientation quaternion
+    // Forward vector in world space from orientation quaternion
     this._forward.set(0, 0, -1).applyQuaternion(this.quat);
-    this._localUp.set(0, 1, 0).applyQuaternion(this.quat);
 
     // Forces
     const thrust = throttle * MAX_THRUST;
     const drag = DRAG_COEFF * speed * speed;
-    const liftMag = LIFT_COEFF * speed * speed;
 
     // Gravity along forward direction (slows down when climbing)
     const gravAlongFwd = GRAVITY * this._forward.y;
-    // Net vertical acceleration (world Y): lift projection minus gravity
-    const accVert = liftMag * this._localUp.y - GRAVITY;
 
     const accFwd = thrust - drag - gravAlongFwd;
 
@@ -130,7 +124,7 @@ export class FlightModel {
     const [x, y, z] = this.state.position;
     const newX = x + this._forward.x * speed * dt;
     const newZ = z + this._forward.z * speed * dt;
-    let newY = y + this._forward.y * speed * dt + accVert * dt;
+    let newY = y + this._forward.y * speed * dt;
 
     // Ground collision
     if (newY < this.planetRadius) {
@@ -141,7 +135,7 @@ export class FlightModel {
     this.state.position = [newX, newY, newZ];
     this.state.velocity = [
       this._forward.x * speed,
-      this._forward.y * speed + accVert,
+      this._forward.y * speed,
       this._forward.z * speed,
     ];
   }
