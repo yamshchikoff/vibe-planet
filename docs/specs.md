@@ -153,22 +153,46 @@ PLANET_RADIUS = 6371
 START_ALTITUDE = 2 (km)
 ```
 
-### Physics Model (simplified)
+### Orientation Model (quaternion)
+
+Ориентация самолёта хранится как `THREE.Quaternion` и управляется в **связанной системе координат** (body-axis / local frame):
+
+- Pitch (W/S) — вращение вокруг локальной оси X (крыло)
+- Yaw (A/D) — вращение вокруг локальной оси Y (вертикаль самолёта)
+- Roll (Q/E) — вращение вокруг локальной оси Z (продольная ось)
+
+Каждое управляющее воздействие — right-multiply: `q = q * q_delta`, где `q_delta` — поворот в локальном фрейме.
+Это даёт интуитивное управление: при крене 90° pitch ведёт к развороту в горизонтальной плоскости, а не к набору высоты.
+
+Ограничение: pitch clamped в [-π/2, π/2] для избежания gimbal lock.
+
+### Physics Model (simplified, 3D)
+
+Силы раскладываются по векторам forward и localUp, полученным из кватерниона ориентации:
 
 ```
-thrust = throttle * MAX_THRUST
-drag = DRAG_COEFF * speed²
-lift = LIFT_COEFF * speed² * cos(pitch)
-gravity_component = GRAVITY * sin(pitch)  // along velocity direction
-vertical_gravity = GRAVITY * cos(pitch)   // toward planet center
+forward = (0, 0, -1) × q  (мир. система)
+localUp = (0, 1, 0) × q   (мир. система)
 
-acceleration_forward = thrust - drag - gravity_component
-acceleration_up = lift - vertical_gravity
+thrust = throttle * MAX_THRUST          // вдоль forward
+drag = DRAG_COEFF * speed²              // против forward
+lift_mag = LIFT_COEFF * speed²          // вдоль localUp
+gravity = GRAVITY                       // вдоль -Y мира
 
-// Velocity update (in local frame)
+// Проекция сил
+grav_along_forward = GRAVITY * forward.y
+lift_vertical = lift_mag * localUp.y
+
+acceleration_forward = thrust - drag - grav_along_forward
+acceleration_vertical = lift_vertical - GRAVITY
+
+// Интеграция
 speed += acceleration_forward * dt
-vertical_speed += acceleration_up * dt
+position += forward * speed * dt + Y * acceleration_vertical * dt
 ```
+
+При крене lift_vertical уменьшается (localUp.y < 1), самолёт теряет высоту,
+если не скомпенсировать тангажом.
 
 ### API
 
@@ -182,16 +206,31 @@ class FlightModel {
 }
 ```
 
+### FlightState
+
+```ts
+interface FlightState {
+  position: [number, number, number];
+  velocity: [number, number, number];
+  orientation: { yaw: number; pitch: number; roll: number }; // из кватерниона, Euler XYZ
+  throttle: number;
+  speed: number;
+}
+```
+
+Поля `orientation` вычисляются из внутреннего кватерниона через `Euler.setFromQuaternion(q, 'XYZ')`.
+Порядок Euler XYZ: pitch (X) → yaw (Y) → roll (Z).
+
 ### Initial State
 - Position: `[0, planetRadius + START_ALTITUDE, 0]` — над северным полюсом
 - Velocity: `[0, 0, -8]` — тангенциально поверхности (к экватору)
-- Orientation: yaw=0, pitch=0, roll=0
+- Orientation: yaw=0, pitch=0, roll=0 (identity quaternion)
 - Throttle: 0 (планирование)
 - Speed: 8 km/с (крейсерская)
 
 ### Collision
 - Минимальная высота = `PLANET_RADIUS`
-- При касании: vertical_speed обнуляется, position clamp. Горизонтальная скорость сохраняется.
+- При касании: position clamp. Горизонтальная скорость сохраняется.
 
 ### States
 - **flying**: y > radius, speed > 0
