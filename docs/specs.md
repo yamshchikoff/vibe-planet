@@ -29,6 +29,7 @@ class SceneManager {
 - Canvas нулевого размера → ресайз при старте
 - Окно меняет размер → слушатель `window.resize`, обновление камеры и рендерера
 - Потеря WebGL контекста → авто-восстановление (Three.js default handler)
+- Первый кадр: коллбэки onUpdate вызываются сразу (lastTime инициализируется при старте, а не в первом loop)
 
 ---
 
@@ -127,10 +128,16 @@ class FlightModel {
 }
 ```
 
+### Initial State
+- Position: `[0, planetRadius + 15, planetRadius * 2]` — над поверхностью планеты с видом на неё
+- Velocity: `[0, 0, -8]` — движение в сторону планеты (по оси -Z к началу координат)
+- Orientation: yaw=0, pitch=0, roll=0
+- Throttle: 0 (планирование)
+- Speed: 8 (крейсерская)
+
 ### Collision
 - Минимальная высота = `PLANET_RADIUS`
 - При касании: vertical_speed обнуляется, position clamp. Горизонтальная скорость сохраняется.
-- Начальное состояние: в воздухе, с крейсерской скоростью (<code>speed &gt; 0</code>)
 
 ### States
 - **flying**: y > radius, speed > 0
