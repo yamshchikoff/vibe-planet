@@ -89,9 +89,8 @@ export class Atmosphere {
     return this.mesh;
   }
 
-  update(cameraPos: Vector3, sunDir: Vector3): void {
+  update(_cameraPos: Vector3, sunDir: Vector3): void {
     this.material.uniforms.sunDirection.value.copy(sunDir);
-    // Position the atmosphere sphere at the planet center
     this.mesh.position.set(0, 0, 0);
   }
 

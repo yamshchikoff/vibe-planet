@@ -1,7 +1,6 @@
 import {
   DirectionalLight,
   Vector3,
-  Color,
   AmbientLight,
 } from 'three';
 
