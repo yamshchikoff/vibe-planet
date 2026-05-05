@@ -1,4 +1,4 @@
-import { ControlInput } from '../flight/types';
+import type { ControlInput } from '../flight/types';
 
 const KEY_MAP: Record<string, keyof ControlInput> = {
   KeyW: 'pitch',

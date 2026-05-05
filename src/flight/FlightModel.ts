@@ -1,4 +1,4 @@
-import { FlightState, ControlInput } from './types';
+import type { FlightState, ControlInput } from './types';
 
 const GRAVITY = 9.8;
 const MAX_THRUST = 15;
@@ -6,7 +6,6 @@ const DRAG_COEFF = 0.02;
 const LIFT_COEFF = 0.08;
 const THROTTLE_RATE = 2.0;
 const ROTATION_RATE = 2.0;
-const MIN_FLIGHT_SPEED = 2.0;
 const START_ALTITUDE = 15;
 
 export class FlightModel {

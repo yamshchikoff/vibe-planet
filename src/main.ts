@@ -29,10 +29,10 @@ const flight = new FlightModel(10);
 const controls = new KeyboardControls();
 
 // Camera follow
-scene.onUpdate((dt) => {
+scene.onUpdate((_dt) => {
   const state = flight.getState();
   const [px, py, pz] = state.position;
-  const { yaw, pitch } = state.orientation;
+  const { yaw } = state.orientation;
 
   // Camera behind and above the plane
   const camDist = 25;

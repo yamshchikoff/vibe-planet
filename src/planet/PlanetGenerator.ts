@@ -4,6 +4,7 @@ import {
   MeshStandardMaterial,
   Color,
   Vector3,
+  BufferAttribute,
 } from 'three';
 
 export interface PlanetConfig {
@@ -184,7 +185,7 @@ export class PlanetGenerator {
       colors[i * 3 + 2] = color.b;
     }
 
-    geometry.setAttribute('color', new (pos.constructor as typeof Float32Array extends typeof Float32Array ? typeof Float32Array : never)(colors, 3));
+    geometry.setAttribute('color', new BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
 
     const material = new MeshStandardMaterial({
