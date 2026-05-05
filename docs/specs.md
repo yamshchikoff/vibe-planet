@@ -153,108 +153,63 @@ class LODPlanet {
 ## 3. FlightModel (`src/flight/`)
 
 ### Responsibility
-Упрощённая физика самолёта с фиксированным шагом обновления.
-Масштаб: 1 unit = 1 km. Планета земного типа, радиус 6371 km.
+Плавно управляемая камера-платформа с моделькой самолёта для визуализации.
+Никакой физики — только кинематическое управление ориентацией и положением.
+Фиксированная скорость 2 km/s при нажатии Shift/Ctrl.
 
 ### Constants
 
 ```
-GRAVITY = 0.0098 (km/с²)
-MAX_THRUST = 0.1 (km/с²)
-DRAG_COEFF = 0.08
-THROTTLE_RATE = 4.0 (единиц/с)
-ROLL_RATE = 2.0 (рад/с)
-PITCH_RATE = 2.0 (рад/с)
-YAW_RATE = 0.5 (рад/с)
-COORD_TURN_RATE = 0.6
+SPEED_CRUISE = 2.0   (km/с)  — фиксированная крейсерская скорость
+THROTTLE_RATE = 4.0           — разгон 0→1 за ~0.25 с
+ROLL_RATE = 1.5       (рад/с)
+PITCH_RATE = 0.8      (рад/с)
+YAW_RATE = 1.0        (рад/с)
 PLANET_RADIUS = 6371
-START_ALTITUDE = 2 (km)
-START_SPEED = 0.5 (km/с)     — ~Mach 1.5
-START_THROTTLE = 0.2          — равновесие thrust = drag на START_SPEED
+START_ALTITUDE = 2    (km)
 ```
 
 ### Orientation Model (quaternion)
 
-Ориентация самолёта хранится как `THREE.Quaternion`. Управление:
+Ориентация платформы хранится как `THREE.Quaternion`. Управление:
 
-- **Roll (A/D)** — вращение вокруг **локальной** оси Z (right-multiply: `q = q * q_roll`).  
-  Элероны. Крен наклоняет вектор подъёмной силы, вызывая поворот.
-- **Pitch (W/S)** — вращение вокруг **локальной** оси X (right-multiply: `q = q * q_pitch`).  
-  Руль высоты. При крене 90° питж ведёт к развороту в горизонтальной плоскости.
-- **Yaw (Q/E)** — вращение вокруг **мировой** оси Y (left-multiply: `q = q_yaw * q`).  
-  Руль направления. Низкая скорость (YAW_RATE = 0.5), не вызывает крен.
+- **Roll (A/D)** — вращение вокруг **локальной** оси Z (right-multiply: `q = q * q_roll`)
+- **Pitch (W/S)** — вращение вокруг **локальной** оси X (right-multiply: `q = q * q_pitch`)
+- **Yaw (Q/E)** — вращение вокруг **мировой** оси Y (left-multiply: `q = q_yaw * q`)
 
-### Coordinated Turn
+Никакой координированной связи крен-рыскание.
 
-При наличии крена (bank angle) самолёт автоматически разворачивается:
+### Movement
 
-```
-turnRate = COORD_TURN_RATE * sin(bankAngle)
-q *= q_y(turnRate * dt)
-```
-
-- COORD_TURN_RATE = 0.6
-- Поворот плавный, пропорциональный углу крена
-- Без крена самолёт летит прямо
-- При крене 45° полный круг за ~15 секунд
-
-Ограничение: pitch clamped в [-π/2, π/2] для избежания gimbal lock.
-
-### Throttle Response
-
-Отклик самолёта на изменение газа:
-
-- **THROTTLE_RATE = 4.0**: throttle переводится из 0 → 1 за ~0.25 с непрерывного нажатия Shift
-- **MAX_THRUST = 0.1 (km/с²)**: максимальная тяга двигателя
-- **DRAG_COEFF = 0.08**: лобовое сопротивление (пропорционально v²)
-
-Ожидаемое поведение на крейсерской скорости (0.5 km/с, горизонт):
-
-| Режим | Net ускорение | Эффект |
-|-------|--------------|--------|
-| Полный газ (Shift) | ~0.08 km/с² | разгон 0.5 → 0.7 km/с за ~3 с |
-| Ноль газа (throttle=0) | ~-0.02 km/с² | замедление 0.5 → 0.44 km/с за ~3 с |
-| Равновесие (drag = thrust) | 0 | v_terminal = sqrt(MAX_THRUST / DRAG_COEFF) ≈ 1.12 km/с |
-
-Throttle 0 → скорость падает до ~0.2 km/с за ~15 с.
-Throttle 1 → скорость растёт до ~1.0 km/с за ~8 с.
-
-### Physics Model (simplified, 3D)
-
-Самолёт движется строго в направлении продольной оси (forward):
+Платформа движется строго вдоль продольной оси (forward):
 
 ```
-forward = (0, 0, -1) × q  (мир. система)
+forward = (0, 0, -1) × q                     // мир. система
+throttleInput = sign(input.throttle)         // -1, 0, +1
+throttle плавно подтягивается к throttleInput: ramp rate = 4.0
 
-thrust = throttle * MAX_THRUST          // вдоль forward
-drag = DRAG_COEFF * speed²              // против forward
-grav_along_forward = GRAVITY * forward.y
-
-acceleration_forward = thrust - drag - grav_along_forward
-
-// Интеграция скорости
-speed += acceleration_forward * dt
-
-// Позиция и скорость — строго вдоль forward
-position += forward * speed * dt
-velocity = forward * speed
+speed = throttle × SPEED_CRUISE
+position += forward × speed × dt
+velocity = forward × speed
 ```
 
-Вектор скорости всегда совпадает с продольной осью самолёта — бокового скольжения нет.
-Вертикальное движение определяется проекцией forward на мировую Y (forward.y).
+При отпускании газа (throttle=0) скорость плавно падает до 0.
+При Ctrl (throttle=-1) скорость плавно растёт до −2 km/s (задний ход).
 
-При крене lift_vertical уменьшается (localUp.y < 1), самолёт теряет высоту,
-если не скомпенсировать тангажом.
+### Collision
+- Радиальная дистанция от центра планеты — при касании position clamp к сфере
+- Без потери скорости (нет damping)
 
 ### API
 
 ```ts
 class FlightModel {
-  constructor(planetRadius?: number)
+  constructor(planetRadius?: number, spawnPosition?: [number, number, number])
   getState(): FlightState
   applyControls(input: ControlInput): void
-  update(dt: number): void       // фиксированный шаг, ожидается 1/60
-  reset(): void                  // сброс в начальное состояние
+  update(dt: number): void
+  reset(): void
+  setSpawn(position: [number, number, number]): void
 }
 ```
 
@@ -265,28 +220,21 @@ interface FlightState {
   position: [number, number, number];
   velocity: [number, number, number];
   orientation: { yaw: number; pitch: number; roll: number }; // из кватерниона, Euler XYZ
-  throttle: number;
-  speed: number;
+  throttle: number;    // -1..1
+  speed: number;       // 0..2
 }
 ```
 
-Поля `orientation` вычисляются из внутреннего кватерниона через `Euler.setFromQuaternion(q, 'XYZ')`.
-Порядок Euler XYZ: pitch (X) → yaw (Y) → roll (Z).
-
 ### Initial State
-- Position: `[0, planetRadius + START_ALTITUDE, 0]` — по умолчанию над северным полюсом; конфигурируется через `spawnPosition` в конструкторе
-- Velocity: `[0, 0, -0.5]` — тангенциально поверхности (к экватору)
-- Orientation: yaw=0, pitch=0, roll=0 (identity quaternion)
-- Throttle: 0.2 (крейсерский режим, равновесие thrust = drag)
-- Speed: 0.5 km/с (~Mach 1.5)
-
-### Collision
-- Радиальная дистанция от центра планеты (не координата Y)
-- При касании: position clamp к сфере, скорость ×0.99
-- Работает в любой точке поверхности
+- Position: спавн-позиция (north pole `[0, R+2, 0]` или mountain `[5993.87, 2181.71, 0]`)
+- Velocity: `[0, 0, 0]` — нет движения без газа
+- Orientation: выравнивание по поверхности через `alignToSurface()`
+- Throttle: 0
+- Speed: 0
 
 ### States
-- **flying**: y > radius, speed > 0
+- **idle**: создан, throttle=0, не движется
+- **moving**: throttle ≠ 0, движется в направлении носа (или хвоста при reverse)
 
 ---
 
@@ -462,3 +410,42 @@ BoxGeometry параметры: (ширина X, высота Y, глубина 
 | Ctrl | Газ - |
 | H | Шпаргалка |
 | U | Атмосфера вкл/выкл |
+
+---
+
+## 8. ChaseCamera (`src/camera/`)
+
+### Responsibility
+Плавное следование камеры за самолётом от третьего лица.
+
+### Behaviour
+- Камера удерживается на смещении в локальной системе самолёта (выше и позади)
+- Позиция интерполируется `lerp` с конфигурируемой скоростью
+- `lookAt` нацелен на позицию самолёта
+- Работает с плавающим началом координат (floating origin)
+
+### API
+
+```ts
+interface CameraConfig {
+  offset: [number, number, number]; // локальное смещение (высота, ...), default: [0, 0.006, 0.015]
+  lerpSpeed: number;                // 0..1, скорость сглаживания, default: 0.3
+}
+
+class ChaseCamera {
+  constructor(config?: Partial<CameraConfig>)
+  update(targetPos: THREE.Vector3, targetQuat: THREE.Quaternion, dt: number): void
+  setCamera(cam: THREE.PerspectiveCamera): void
+  setOffset(offset: [number, number, number]): void
+  reset(): void
+}
+```
+
+### Follow Behaviour
+- `lerpSpeed = 0.3`: мягкое следование, камера «плавает» за самолётом
+- Первый кадр: мгновенный прыжок на целевую позицию (нет разгона от (0,0,0))
+- `lookAt` обновляется каждый кадр на реальную позицию самолёта (не сглаженно)
+
+### Edge Cases
+- Первый кадр после создания: jump на целевую позицию (без lerp)
+- dt > 1/15 (падение FPS): clamp lerpFactor, чтобы не проскочить
