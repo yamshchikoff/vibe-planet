@@ -23,7 +23,7 @@ scene.getScene().add(sun.getAmbient());
 // Planet — cube-sphere LOD with quadtree
 const planet = new LODPlanet({
   planetRadius: 6371,
-  seed: 42,
+  seed: 91,
   heightAmplitude: 8,
   maxDepth: 12,
   maxChunks: 1000,
