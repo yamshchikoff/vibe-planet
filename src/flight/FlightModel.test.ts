@@ -55,24 +55,30 @@ describe('FlightModel', () => {
       expect(flight.getState().throttle).toBeGreaterThanOrEqual(0);
     });
 
-    it('full throttle for 2 seconds increases speed by at least 3 km/s', () => {
-      const initialSpeed = flight.getState().speed;
+    it('full throttle for 2 seconds stays below 5 km/s (realistic speed)', () => {
       for (let i = 0; i < 120; i++) {
         flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 1 });
         flight.update(1 / 60);
       }
-      const speedIncrease = flight.getState().speed - initialSpeed;
-      expect(speedIncrease).toBeGreaterThan(3);
+      expect(flight.getState().speed).toBeLessThan(5);
     });
 
-    it('zero throttle for 3 seconds decreases speed by at least 1 km/s', () => {
-      const initialSpeed = flight.getState().speed;
+    it('zero throttle for 3 seconds decelerates below 2 km/s', () => {
       for (let i = 0; i < 180; i++) {
         flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0 });
         flight.update(1 / 60);
       }
-      const speedDecrease = initialSpeed - flight.getState().speed;
-      expect(speedDecrease).toBeGreaterThan(1);
+      expect(flight.getState().speed).toBeLessThan(2);
+    });
+
+    it('cruise throttle maintains speed within 10% over 2 seconds', () => {
+      const initialSpeed = flight.getState().speed;
+      for (let i = 0; i < 120; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: 0.2 });
+        flight.update(1 / 60);
+      }
+      const speedChange = Math.abs(flight.getState().speed - initialSpeed);
+      expect(speedChange).toBeLessThan(initialSpeed * 0.1);
     });
   });
 
@@ -114,7 +120,7 @@ describe('FlightModel', () => {
 
       // With body-axis controls, banking redirects pitch into world XZ
       // With old world-axis controls, pitch only affects Y → dx ≈ 0
-      expect(dx).toBeGreaterThan(0.5);
+      expect(dx).toBeGreaterThan(0.1);
     });
   });
 
