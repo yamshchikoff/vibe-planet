@@ -48,7 +48,7 @@ worldGroup.add(plane.getMesh());
 
 // Camera
 const cam = scene.getCamera();
-cam.fov = 120;
+cam.fov = 75;
 cam.updateProjectionMatrix();
 
 // Camera offset from plane in local frame: 10km above (+Y), 20km behind (+Z)
