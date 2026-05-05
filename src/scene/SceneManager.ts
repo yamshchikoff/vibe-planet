@@ -57,6 +57,7 @@ export class SceneManager {
 
     // Floating origin: keep camera at origin for rendering precision
     this.worldGroup.position.copy(this.camera.position).negate();
+    this.camera.position.set(0, 0, 0);
 
     this.renderer.render(this.scene, this.camera);
     this.rafId = requestAnimationFrame(this.loop);
