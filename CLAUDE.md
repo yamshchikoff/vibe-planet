@@ -60,6 +60,13 @@ Procedural planet generator + flight simulator. Браузерное прило�
 - `npm test -- --watch` — вотчер
 - `npm run build` — production-сборка
 
+## Dev Server
+
+Сервер поднимается на `0.0.0.0:8080`:
+- Внешний IP: `79.139.138.87`
+- Внутренний IP: `192.168.181.128`
+- URL: `http://79.139.138.87:8080/`
+
 ## Module Map
 
 ```
