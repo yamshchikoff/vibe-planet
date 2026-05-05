@@ -119,7 +119,7 @@ docs:  sync specs with actual implementation
 
 ### PlaneVisual (`src/plane/`) — IMPLEMENTED
 - Визуализация самолёта из примитивов Three.js (BoxGeometry)
-- Масштаб: 0.01 (25 м длины, 40 м размах — реалистичный самолёт)
+- Scale: 0.006 (истребитель 15 м × 9 м — F-16-class)
 - Позиционирование через update(position, yaw, pitch, roll)
 - Шесть частей: фюзеляж, нос, кабина, крылья, хвостовые стабилизаторы, киль
 
@@ -194,7 +194,7 @@ planet/
 1. Update controls state (getInput snapshot)
 2. Step flight physics (dt из requestAnimationFrame, capped 30fps min)
 3. Update LODPlanet: traverse quadtree, split/merge по расстоянию, generate/ cache chunks
-4. Update camera (20 м позади, 15 м выше самолёта, lookAt на самолёт, FOV 85°, smooth factor 20)
+4. Update camera (15 м позади, 6 м выше самолёта, lookAt на самолёт, FOV 85°)
 5. Floating origin: worldGroup.position = -camera.position, затем camera.position = (0, 0, 0).  
    Таким образом Three.js view matrix translate(-camera.position) = identity,  
    и рендер происходит в системе координат worldGroup (объекты смещены относительно камеры).  
@@ -206,9 +206,9 @@ planet/
 ### Camera
 
 - FOV: 85° (широкий для близкой chase камеры)
-- Позиция: 20 м позади (+Z), 15 м выше (+Y) в локальной системе самолёта
+- Позиция: 15 м позади (+Z), 6 м выше (+Y) в локальной системе самолёта
 - Ориентация: независимая от самолёта — всегда смотрит на самолёт (lookAt)
-- Smooth follow: плавная интерполяция позиции (lerp, factor 6 dt⁻¹), без рывков
+- Следование: мгновенное (позиция вычисляется каждый кадр), без лага
 - При крене и тангаже самолёта камера не заваливается — stays upright, plane always centred
 - Floating origin: каждый кадр worldGroup смещается на -camera.position, камера в начале координат
 
