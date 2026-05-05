@@ -83,50 +83,71 @@ function lerpColor(
 function getBiomeColor(normalizedHeight: number, lat: number): [number, number, number] {
   const h = Math.max(0, Math.min(1, normalizedHeight));
 
-  // Adjust snow threshold at high latitudes (polar caps)
+  // Dynamic snow threshold: descends toward poles (polar caps)
   const snowThreshold = Math.max(
     0.25,
     0.85 - Math.max(0, Math.abs(lat) - Math.PI / 3) * 0.8
   );
 
-  // Biome thresholds and their colors (ascending)
-  const thresholds = [0, 0.1, 0.25, 0.3, 0.55, 0.7, snowThreshold];
-  const colors: [number, number, number][] = [
-    [0.102, 0.239, 0.420], // deep water    #1a3d6b
-    [0.157, 0.502, 0.725], // shallow       #2980b9
-    [0.831, 0.655, 0.416], // sand          #d4a76a
-    [0.290, 0.549, 0.247], // grass         #4a8c3f
-    [0.176, 0.353, 0.153], // forest        #2d5a27
-    [0.478, 0.478, 0.478], // rock          #7a7a7a
-  ];
-  const snowColor: [number, number, number] = [0.941, 0.941, 0.941]; // snow #f0f0f0
+  const snowColor: [number, number, number] = [0.941, 0.941, 0.941];
 
-  // Find the segment containing h
-  if (h >= thresholds[thresholds.length - 1]) {
-    // Above last threshold → blend rock → snow
-    const t = (h - thresholds[thresholds.length - 1]) / (1 - thresholds[thresholds.length - 1]);
-    const s = t * t * (3 - 2 * t); // smoothstep
-    return lerpColor(colors[colors.length - 1], snowColor, s);
+  // Build sorted biome array with snowThreshold inserted in the correct position.
+  // Since snowThreshold ≥ 0.25, it can fall between any of: 0.25, 0.3, 0.55, 0.7, or above.
+  let thresholds: number[];
+  let colors: [number, number, number][];
+
+  if (snowThreshold <= 0.3) {
+    thresholds = [0, 0.1, 0.25, snowThreshold];
+    colors = [
+      [0.102, 0.239, 0.420],
+      [0.157, 0.502, 0.725],
+      [0.831, 0.655, 0.416],
+      snowColor,
+    ];
+  } else if (snowThreshold <= 0.55) {
+    thresholds = [0, 0.1, 0.25, 0.3, snowThreshold];
+    colors = [
+      [0.102, 0.239, 0.420],
+      [0.157, 0.502, 0.725],
+      [0.831, 0.655, 0.416],
+      [0.290, 0.549, 0.247],
+      snowColor,
+    ];
+  } else if (snowThreshold <= 0.7) {
+    thresholds = [0, 0.1, 0.25, 0.3, 0.55, snowThreshold];
+    colors = [
+      [0.102, 0.239, 0.420],
+      [0.157, 0.502, 0.725],
+      [0.831, 0.655, 0.416],
+      [0.290, 0.549, 0.247],
+      [0.176, 0.353, 0.153],
+      snowColor,
+    ];
+  } else {
+    thresholds = [0, 0.1, 0.25, 0.3, 0.55, 0.7, snowThreshold];
+    colors = [
+      [0.102, 0.239, 0.420],
+      [0.157, 0.502, 0.725],
+      [0.831, 0.655, 0.416],
+      [0.290, 0.549, 0.247],
+      [0.176, 0.353, 0.153],
+      [0.478, 0.478, 0.478],
+      snowColor,
+    ];
   }
 
-  let idx = 0;
+  // Find which segment h falls into and smoothstep-interpolate
   for (let i = 0; i < thresholds.length - 1; i++) {
     if (h >= thresholds[i] && h < thresholds[i + 1]) {
-      idx = i;
-      break;
+      const range = thresholds[i + 1] - thresholds[i];
+      if (range < 1e-6) return colors[i];
+      const t = (h - thresholds[i]) / range;
+      const s = t * t * (3 - 2 * t);
+      return lerpColor(colors[i], colors[i + 1], s);
     }
   }
 
-  const lower = thresholds[idx];
-  const upper = thresholds[idx + 1];
-  const range = upper - lower;
-
-  if (range < 1e-6) return colors[idx];
-
-  const t = (h - lower) / range;
-  const s = t * t * (3 - 2 * t); // smoothstep for seamless blending
-
-  return lerpColor(colors[idx], colors[idx + 1], s);
+  return snowColor;
 }
 
 export class LODPlanet {
