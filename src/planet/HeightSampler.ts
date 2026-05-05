@@ -89,6 +89,29 @@ export class HeightSampler {
     return value / maxVal;
   }
 
+  // Domain warp for fractal biome boundaries.
+  // Returns value in [-1, 1] at a scale larger than terrain height noise
+  // so that biome boundary isolines become fractal curves.
+  getBiomeWarp(x: number, y: number, z: number, octaves: number): number {
+    const scale = 500;
+    let amplitude = this.gain;
+    let frequency = 1 / scale;
+    let value = 0;
+    let maxVal = 0;
+
+    for (let i = 0; i < octaves; i++) {
+      const nx = x * frequency;
+      const ny = y * frequency;
+      const nz = z * frequency;
+      value += valueNoise3D(nx, ny, nz, this.seed + 1000 + i * 73) * amplitude;
+      maxVal += amplitude;
+      frequency *= this.lacunarity;
+      amplitude *= this.gain;
+    }
+
+    return value / maxVal;
+  }
+
   // Convenience: sample at spherical coordinates
   getHeightLatLon(lat: number, lon: number): number {
     const x = Math.cos(lat) * Math.cos(lon);

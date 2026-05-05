@@ -15,6 +15,7 @@ export interface LODConfig {
   maxDepth: number;
   maxChunks: number;
   chunkResolution: number;
+  biomeWarpAmplitude: number;
 }
 
 const DEFAULTS: Required<LODConfig> = {
@@ -24,6 +25,7 @@ const DEFAULTS: Required<LODConfig> = {
   maxDepth: 12,
   maxChunks: 1000,
   chunkResolution: 16,
+  biomeWarpAmplitude: 0.035,
 };
 
 // Cube face definitions: axis (0=X,1=Y,2=Z), sign (+/-1)
@@ -338,9 +340,12 @@ export class LODPlanet {
           normals.push(dir.x, dir.y, dir.z);
         }
 
-        // Biome color
+        // Biome color with fractal domain warp
+        const warpOctaves = Math.min(6, depth + 2);
+        const warp = this.sampler.getBiomeWarp(dir.x, dir.y, dir.z, warpOctaves);
+        const warpedH = h + warp * this.config.biomeWarpAmplitude;
         const lat = Math.asin(Math.max(-1, Math.min(1, dir.y)));
-        const [cr, cg, cb] = getBiomeColor(h, lat);
+        const [cr, cg, cb] = getBiomeColor(warpedH, lat);
         colors.push(cr, cg, cb);
       }
     }
