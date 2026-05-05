@@ -72,18 +72,61 @@ function uvToDir(faceIdx: number, u: number, v: number): Vector3 {
   return out;
 }
 
-function getBiomeColor(normalizedHeight: number, lat: number): [number, number, number] {
-  // Adjust snow threshold at high latitudes (polar caps)
-  const snowThreshold = 0.85 - Math.max(0, Math.abs(lat) - Math.PI / 3) * 0.8;
-  const adjustedHeight = normalizedHeight;
+function lerpColor(
+  a: [number, number, number],
+  b: [number, number, number],
+  t: number
+): [number, number, number] {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
 
-  if (adjustedHeight < 0.1) return [0.102, 0.239, 0.420]; // deep water #1a3d6b
-  if (adjustedHeight < 0.25) return [0.157, 0.502, 0.725]; // shallow #2980b9
-  if (adjustedHeight < 0.3) return [0.831, 0.655, 0.416]; // sand #d4a76a
-  if (adjustedHeight < 0.55) return [0.290, 0.549, 0.247]; // grass #4a8c3f
-  if (adjustedHeight < 0.7) return [0.176, 0.353, 0.153]; // forest #2d5a27
-  if (adjustedHeight < snowThreshold) return [0.478, 0.478, 0.478]; // rock #7a7a7a
-  return [0.941, 0.941, 0.941]; // snow #f0f0f0
+function getBiomeColor(normalizedHeight: number, lat: number): [number, number, number] {
+  const h = Math.max(0, Math.min(1, normalizedHeight));
+
+  // Adjust snow threshold at high latitudes (polar caps)
+  const snowThreshold = Math.max(
+    0.25,
+    0.85 - Math.max(0, Math.abs(lat) - Math.PI / 3) * 0.8
+  );
+
+  // Biome thresholds and their colors (ascending)
+  const thresholds = [0, 0.1, 0.25, 0.3, 0.55, 0.7, snowThreshold];
+  const colors: [number, number, number][] = [
+    [0.102, 0.239, 0.420], // deep water    #1a3d6b
+    [0.157, 0.502, 0.725], // shallow       #2980b9
+    [0.831, 0.655, 0.416], // sand          #d4a76a
+    [0.290, 0.549, 0.247], // grass         #4a8c3f
+    [0.176, 0.353, 0.153], // forest        #2d5a27
+    [0.478, 0.478, 0.478], // rock          #7a7a7a
+  ];
+  const snowColor: [number, number, number] = [0.941, 0.941, 0.941]; // snow #f0f0f0
+
+  // Find the segment containing h
+  if (h >= thresholds[thresholds.length - 1]) {
+    // Above last threshold → blend rock → snow
+    const t = (h - thresholds[thresholds.length - 1]) / (1 - thresholds[thresholds.length - 1]);
+    const s = t * t * (3 - 2 * t); // smoothstep
+    return lerpColor(colors[colors.length - 1], snowColor, s);
+  }
+
+  let idx = 0;
+  for (let i = 0; i < thresholds.length - 1; i++) {
+    if (h >= thresholds[i] && h < thresholds[i + 1]) {
+      idx = i;
+      break;
+    }
+  }
+
+  const lower = thresholds[idx];
+  const upper = thresholds[idx + 1];
+  const range = upper - lower;
+
+  if (range < 1e-6) return colors[idx];
+
+  const t = (h - lower) / range;
+  const s = t * t * (3 - 2 * t); // smoothstep for seamless blending
+
+  return lerpColor(colors[idx], colors[idx + 1], s);
 }
 
 export class LODPlanet {
