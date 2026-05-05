@@ -150,8 +150,14 @@ planet/
 
 1. Update controls state (getInput snapshot)
 2. Step flight physics (dt из requestAnimationFrame, capped 30fps min)
-3. Update camera (lookAt за позицией самолёта, сверху-сзади)
+3. Update camera (20 м позади, 10 м выше самолёта, взгляд по направлению полёта)
 4. Render planet с освещением (DirectionalLight + AmbientLight)
+
+### Camera
+
+- FOV: 120°
+- Позиция: 20 м позади (против направления полёта), 10 м выше
+- Направление взгляда: параллельно продольной оси самолёта (not lookAt на самолёт)
 
 ## Performance
 
