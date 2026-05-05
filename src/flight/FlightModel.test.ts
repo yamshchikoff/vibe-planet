@@ -13,7 +13,7 @@ describe('FlightModel', () => {
   describe('initial state', () => {
     it('starts above ground with forward speed', () => {
       const state = flight.getState();
-      expect(state.position[1]).toBeGreaterThan(10); // above planet radius
+      expect(state.position[1]).toBeGreaterThan(6371); // above planet radius
       expect(state.speed).toBeGreaterThan(0);
     });
 
@@ -28,9 +28,9 @@ describe('FlightModel', () => {
       expect(flight.getState().throttle).toBe(0);
     });
 
-    it('starts at positive Z so planet is ahead (z > 0)', () => {
+    it('starts at north pole (z = 0), flying toward equator', () => {
       const state = flight.getState();
-      expect(state.position[2]).toBeGreaterThan(0);
+      expect(state.position[2]).toBe(0);
     });
   });
 
@@ -83,7 +83,7 @@ describe('FlightModel', () => {
         flight.update(1 / 60);
       }
       const state = flight.getState();
-      expect(state.position[1]).toBeGreaterThanOrEqual(10); // planet radius
+      expect(state.position[1]).toBeGreaterThanOrEqual(6371); // planet radius
     });
   });
 
