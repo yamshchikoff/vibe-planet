@@ -179,7 +179,11 @@ planet/
 2. Step flight physics (dt из requestAnimationFrame, capped 30fps min)
 3. Update LODPlanet: traverse quadtree, split/merge по расстоянию, generate/ cache chunks
 4. Update camera (20 км позади, 10 км выше самолёта, взгляд по направлению полёта)
-5. Floating origin: worldGroup.position = -camera.position (камера в origin)
+5. Floating origin: worldGroup.position = -camera.position, затем camera.position = (0, 0, 0).  
+   Таким образом Three.js view matrix translate(-camera.position) = identity,  
+   и рендер происходит в системе координат worldGroup (объекты смещены относительно камеры).  
+   После коллбэков camera.position — это желаемая позиция камеры в мире; loop читает её,  
+   смещает worldGroup, сбрасывает камеру в origin и рендерит.
 6. Update Atmosphere + Sun uniforms
 7. Render planet chunks → atmosphere → (в перспективе clouds)
 
