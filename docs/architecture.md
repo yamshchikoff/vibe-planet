@@ -105,13 +105,14 @@ docs:  sync specs with actual implementation
 
 ### Flight Model (`src/flight/`) — IMPLEMENTED
 - Физика самолёта (упрощённая: тяга, подъёмная сила, гравитация, лобовое сопротивление)
-- **Ориентация: кватернион**, yaw — мировая Y (left-multiply), pitch/roll — локальные оси (right-multiply)
+- **Ориентация: кватернион**, roll/pitch — локальные оси (right-multiply), yaw — мировая Y (left-multiply)
+- **Coordinated turn**: при крене автоповорот вокруг мировой Y, плавный и пропорциональный bank
 - Начальное состояние: в воздухе, с крейсерской скоростью
 - Коллизия с поверхностью (clamp позиции)
 - Сброс состояния
 
 ### Controls (`src/controls/`) — IMPLEMENTED
-- Управление с клавиатуры: W/S pitch, A/D yaw, Q/E roll, Shift/Ctrl throttle
+- Управление с клавиатуры: W/S pitch, A/D roll, Q/E yaw, Shift/Ctrl throttle
 - attach/detach жизненный цикл
 - Сброс всех клавиш при потере фокуса (blur)
 - Противоположные клавиши компенсируются (net sum = 0)
