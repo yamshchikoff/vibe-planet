@@ -93,7 +93,7 @@ docs:  sync specs with actual implementation
 - **LOD**: split по расстоянию от камеры, maxDepth 12, effectiveDepth снижается с высотой
 - **Height map**: 3D seeded value noise FBM (6 октав, scale 200), детерминированно
 - **Terrain amplitude**: 0–8 km (normalized noise [0, 1] × heightAmplitude)
-- **Coloring**: биомы по нормализованной высоте + широте (vertex colors)
+- **Coloring**: биомы по нормализованной высоте + широте (vertex colors); границы возмущены 3D FBM domain warp для фрактальных изолиний
 - **Caching**: LRU-кэш чанков (max 1000), ключ = `f{face}-d{depth}-{x}-{y}`
 - **Chunk resolution**: 16×16 вершин на чанк
 

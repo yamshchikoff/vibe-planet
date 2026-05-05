@@ -94,16 +94,27 @@ eliminating hard seams at chunk boundaries.
 Выше 60° широты: snow threshold смещается вниз (полярные шапки).
 Переходы между биомами — плавные (smoothstep, без if/else-скачков).
 
+### Fractal Boundaries
+
+Границы биомов возмущаются 3D FBM-шумом (domain warp), чтобы изолинии не были прямыми:
+
+- **Scale**: 500 km (базовая длина волны)
+- **Octaves**: растут с глубиной LOD (2 на depth 0 → 6 на depth 4+)
+- **Amplitude**: 0.035 (≈280 м эквивалентного смещения высоты)
+- **Seed**: общий с HeightSampler, детерминирован
+- **Результат**: на дальних дистанциях — континентальные изгибы, вблизи — фрактальные детали до масштаба ~сотен метров
+
 ### API
 
 ```ts
 interface LODConfig {
-  planetRadius: number;      // default: 6371
+  planetRadius: number;        // default: 6371
   seed: number;              // default: random
   heightAmplitude: number;   // default: 8
   maxDepth: number;          // max quadtree depth, default: 12
   maxChunks: number;         // cache size, default: 1000
   chunkResolution: number;   // вершин на ребро чанка, default: 16
+  biomeWarpAmplitude: number; // фрактальное возмущение биомов, default: 0.035
 }
 
 class LODPlanet {
