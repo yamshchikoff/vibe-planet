@@ -1,120 +1,104 @@
 # QEMU Full-Emulation Dev Server
 
-The planet app runs inside an **Alpine Linux 3.20** QEMU VM with **TCG full emulation** (no KVM). This provides a reproducible, isolated environment that matches production-like conditions.
+The planet app runs inside an **Alpine Linux 3.20** QEMU VM with **TCG full emulation** (no KVM). This provides a reproducible, isolated environment.
 
 ## Quick Start
 
 ```bash
-cd /home/agent/qemu-vm
+# Build the VM image from scratch (fast: prepares overlay + seed.iso)
+./scripts/build-vm.sh
 
-# Start the VM
-./boot-vm.sh
+# Boot the VM
+./scripts/boot-vm.sh
 
-# Wait ~60-80s for boot + cloud-init
-# App becomes available at:
-#   http://localhost:8080/    (local)
-#   http://79.139.138.87:8080/ (external)
+# Or build + install packages (slow: ~15 min in TCG)
+./scripts/build-vm.sh --build
 ```
+
+The first time, or after `--clean`, you need to build the image:
+
+| Step | Command | Time |
+|------|---------|------|
+| Prepare overlay + boot config | `./scripts/build-vm.sh` | ~5 sec |
+| Install packages (Node.js, npm, curl) | `./scripts/build-vm.sh --build` | ~15 min (TCG) |
+| Normal boot | `./scripts/boot-vm.sh` | ~60-80 sec |
+
+### Files
+
+All VM files live in `qemu-vm/` (gitignored) and `scripts/`:
+
+| File | Purpose | In git |
+|------|---------|--------|
+| `scripts/build-vm.sh` | Deterministic build script | Yes |
+| `scripts/boot-vm.sh` | Boot script | Yes |
+| `qemu-vm/overlay.raw` | Writable Alpine Linux disk image (2 GB) | No (built) |
+| `qemu-vm/seed.iso` | cloud-init NoCloud datasource (374 KB) | No (built) |
+| `qemu-vm/nocloud_alpine-*.qcow2` | Base Alpine cloud image (179 MB) | No (downloaded) |
+
+Generated files are listed in `.gitignore` and never committed.
+
+## Deterministic Build
+
+`build-vm.sh` reproduces the exact same image given the same Alpine version:
+
+```
+./scripts/build-vm.sh          # Phase 1: download base, create overlay, seed.iso
+./scripts/build-vm.sh --build  # Phase 2: boot QEMU, install packages, verify
+./scripts/build-vm.sh --clean  # Remove all generated artifacts
+```
+
+**Phase 1** (fast, no VM boot):
+1. Downloads Alpine 3.20 cloud image (`nocloud_alpine-3.20.3-x86_64-cloudimg.qcow2`)
+2. Creates thin qcow2 overlay, converts to raw
+3. Writes `ds=nocloud` to `/boot/extlinux.conf` via debugfs
+4. Generates `seed.iso` with cloud-init NoCloud datasource
+
+**Phase 2** (slow, runs QEMU):
+1. Boots QEMU with `-no-reboot` flag
+2. Watches serial console for cloud-init completion
+3. Cloud-init installs: `nodejs`, `npm`, `curl`
+4. Configures SSH (key + password auth)
+5. Sets `PermitRootLogin yes`
+6. Shuts down on completion
+7. Verifies installed packages via debugfs
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QEMU_DIR` | `qemu-vm/` | Target directory for VM files |
+| `ALPINE_VERSION` | `3.20.3` | Alpine release to use |
+| `SSH_PUBKEY` | agent@ubuntu-with-agents | SSH key to inject |
 
 ## How It Works
 
 ### Boot Chain
 
 1. QEMU boots Alpine cloud image (`overlay.raw`) via SeaBIOS + SYSLINUX
-2. `extlinux.conf` passes `ds=nocloud` to the kernel (modified in overlay)
+2. `extlinux.conf` passes `ds=nocloud` to the kernel (set by build-vm.sh)
 3. Alpine initramfs mounts root (`LABEL=/`) from the disk
 4. Cloud-init NoCloud datasource reads `seed.iso` (CDROM label `cidata`)
-5. Cloud-init runs: downloads tarball → extracts to `/opt/dist/` → starts Python HTTP server
-
-### Files
-
-| File | Purpose |
-|------|---------|
-| `alpine.qcow2` | Base Alpine Linux 3.20 cloud image (179 MB) |
-| `overlay.raw` | Writable overlay with boot config modified (`ds=nocloud`) |
-| `seed.iso` | cloud-init NoCloud datasource (user-data + meta-data) |
-| `user-data` | cloud-init config: packages, runcmd, dev server setup |
-| `meta-data` | cloud-init instance metadata |
-| `planet.tgz` | Project tarball (built dist/ + source) |
-| `vmlinuz-virt` | Alpine virt kernel (used for netboot, not required now) |
-| `initramfs-virt` | Alpine virt initramfs (used for netboot, not required now) |
-| `boot-vm.sh` | Boot script |
-| `vm.log` | VM serial console output |
+5. Cloud-init installs packages, sets up SSH
 
 ### Port Forwarding
 
 | Host | Guest | Service |
 |------|-------|---------|
-| `:8080` | `:8080` | Python HTTP server (planet app) |
+| `:8080` | `:8080` | Planet app (npm run dev) |
 | `:2222` | `:22` | SSH (root/planet) |
-
-## Rebuilding
-
-### After user-data changes
-
-```bash
-# Regenerate seed ISO
-rm -f seed.iso
-genisoimage -output seed.iso -volid cidata -joliet -rock /tmp/seed-new/
-```
-
-### After project changes
-
-```bash
-# 1. Build production version
-cd /home/agent/planet && npm run build
-
-# 2. Recreate tarball
-tar czf /home/agent/qemu-vm/planet.tgz \
-  --exclude=node_modules --exclude=.git \
-  dist src package.json package-lock.json tsconfig.json vite.config.ts public
-
-# 3. Delete old overlay for clean boot
-rm -f overlay.raw overlay.qcow2
-qemu-img create -f qcow2 -F qcow2 -b alpine.qcow2 overlay.qcow2
-qemu-img convert -O raw overlay.qcow2 overlay.raw
-
-# 4. Add ds=nocloud to boot config
-debugfs -w overlay.raw << 'EOF'
-rm /boot/extlinux.conf
-write /tmp/extlinux-new2.conf /boot/extlinux.conf
-EOF
-
-# 5. Reboot VM
-```
-
-## First-Time Setup
-
-If starting from scratch:
-
-```bash
-# Create overlay
-qemu-img create -f qcow2 -F qcow2 -b alpine.qcow2 overlay.qcow2
-qemu-img convert -O raw overlay.qcow2 overlay.raw
-
-# Modify boot config for ds=nocloud
-debugfs -w overlay.raw << 'EOF'
-rm /boot/extlinux.conf
-write modified-extlinux.conf /boot/extlinux.conf
-EOF
-
-# Create seed ISO
-genisoimage -output seed.iso -volid cidata -joliet -rock seed-data/
-
-# Start tarball HTTP server
-python3 -m http.server 8099 &
-```
 
 ## Access
 
 - **Web**: http://79.139.138.87:8080/
 - **SSH**: `ssh root@localhost -p 2222` (password: `planet`)
-- **Console**: `cat vm.log` (serial console log)
+- **Console**: Serial console output appears in the QEMU terminal
 
 ## Troubleshooting
 
-**Port 8080 connection reset**: The cloud-init runcmd may still be running. Wait for `Cloud-init ... finished` in `vm.log`.
+**Build hangs on package install**: The VM is slow in TCG. Wait 15+ minutes. Check QEMU process: `ps aux | grep qemu`.
 
-**No HTTP response**: Check `grep "Python server" vm.log`. If missing, cloud-init runcmd failed.
+**Port 8080 connection reset**: Boot or cloud-init still running. Wait for console output.
 
-**Need fresh boot**: Delete `overlay.raw`, recreate steps above.
+**Need clean rebuild**: `./scripts/build-vm.sh --clean && ./scripts/build-vm.sh --build`
+
+**SSH connection refused**: VM still booting. Wait 60-80 seconds.
