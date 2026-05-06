@@ -1,4 +1,4 @@
-import { Scene, PerspectiveCamera, WebGLRenderer, Group, ACESFilmicToneMapping, Color, SRGBColorSpace } from 'three';
+import { Scene, PerspectiveCamera, WebGLRenderer, Group, ACESFilmicToneMapping, Color, SRGBColorSpace, PCFSoftShadowMap } from 'three';
 
 type UpdateCallback = (dt: number) => void;
 
@@ -22,6 +22,8 @@ export class SceneManager {
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = PCFSoftShadowMap;
 
     this.scene = new Scene();
     this.scene.background = new Color(0x050510);

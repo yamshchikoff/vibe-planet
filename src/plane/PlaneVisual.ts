@@ -39,6 +39,8 @@ export class PlaneVisual {
     const geo = new BoxGeometry(w, h, d);
     const mat = new MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.6 });
     const mesh = new Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     this.meshes.push(mesh);
     return mesh;
   }

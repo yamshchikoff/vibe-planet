@@ -20,6 +20,7 @@ const worldGroup = scene.getWorldGroup();
 // Sun — directional + hemisphere light with day/night cycle, visible disc
 const sun = new Sun();
 scene.getScene().add(sun.getLight());
+scene.getScene().add(sun.getLight().target);
 scene.getScene().add(sun.getHemisphere());
 scene.getScene().add(sun.getSunSprite());
 

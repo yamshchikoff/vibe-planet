@@ -447,6 +447,8 @@ export class LODPlanet {
     };
 
     const mesh = new Mesh(geo, mat);
+    mesh.receiveShadow = true;
+    mesh.castShadow = depth >= 6;
     return mesh;
   }
 

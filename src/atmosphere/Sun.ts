@@ -25,7 +25,21 @@ export class Sun {
   constructor(config?: Partial<SunConfig>) {
     this.inclination = config?.inclination ?? 0.41; // ~23.5° axial tilt
     this.light = new DirectionalLight(0xfff5e6, 1.5);
-    this.light.position.set(50000, 30000, 0);
+    this.light.position.set(0, 100000, 0);
+    this.light.castShadow = true;
+    this.light.shadow.mapSize.width = 2048;
+    this.light.shadow.mapSize.height = 2048;
+    this.light.shadow.bias = -0.001;
+    this.light.shadow.normalBias = 0.001;
+    const SHADOW_RADIUS = 200;
+    const LIGHT_DIST = 100000;
+    this.light.shadow.camera.left = -SHADOW_RADIUS;
+    this.light.shadow.camera.right = SHADOW_RADIUS;
+    this.light.shadow.camera.top = SHADOW_RADIUS;
+    this.light.shadow.camera.bottom = -SHADOW_RADIUS;
+    this.light.shadow.camera.near = LIGHT_DIST - SHADOW_RADIUS;
+    this.light.shadow.camera.far = LIGHT_DIST + SHADOW_RADIUS;
+    this.light.shadow.camera.updateProjectionMatrix();
     this.hemi = new HemisphereLight(0x87CEEB, 0x3B2F2F, 0.3);
     this.direction = new Vector3();
   }
@@ -52,11 +66,12 @@ export class Sun {
     const material = new SpriteMaterial({
       map: texture,
       blending: AdditiveBlending,
-      depthTest: false,
+      depthTest: true,
       transparent: true,
     });
 
     const sprite = new Sprite(material);
+    sprite.renderOrder = 2;
     sprite.scale.set(12000, 12000, 1);
     return sprite;
   }
