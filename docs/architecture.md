@@ -53,6 +53,12 @@ docs:  sync specs with actual implementation
 - Рефакторинг — только при зелёных тестах
 - После коммита реализации — обязательная сверка `docs/` с кодом
 
+## Running
+
+- **Dev**: `npm run dev` — Vite on `0.0.0.0:8080`
+- **Build**: `npm run build` → `dist/` with production bundle
+- **QEMU VM**: `docs/qemu-vm.md` — full virtualization (TCG), no KVM. Boots Alpine Linux, serves `dist/` on port 8080.
+
 ## Technology Stack
 
 | Компонент | Технология | Обоснование |
@@ -61,7 +67,7 @@ docs:  sync specs with actual implementation
 | Язык | TypeScript | Типизация, автодополнение |
 | Сборка | Vite | Быстрая dev-сборка, HMR |
 | Тесты | Vitest + jsdom | Совместимость с Vite, окружение DOM |
-| Сервер | Vite dev server / static | Нет API, только статика |
+| Сервер | Vite dev / Python http.server / QEMU | См. docs/qemu-vm.md |
 | Шум | Value noise FBM (CPU) | Процедурная генерация рельефа |
 
 ## Architecture Overview
