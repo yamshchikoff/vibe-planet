@@ -1,5 +1,8 @@
 # Module Specifications
 
+**License:** MIT. See [LICENSE](../LICENSE) in repository root.
+All implementation must be checked for compliance with the MIT License terms before distribution.
+
 ## 1. SceneManager (`src/scene/`)
 
 ### Responsibility

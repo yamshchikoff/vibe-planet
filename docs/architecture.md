@@ -1,5 +1,8 @@
 # Planet — Procedural Planet Generator & Flight Simulator
 
+**License:** MIT. See [LICENSE](../LICENSE) in repository root.
+All implementation must be checked for compliance with the MIT License terms before distribution.
+
 ## Vision
 
 Браузерное приложение, генерирующее процедурную планету с возможностью облетать её на самолёте. Весь рендеринг и игровая логика — на клиенте. Веб-сервер нужен только для раздачи статики.
@@ -27,6 +30,12 @@
 | `feat:` | только реализация (`.ts`, `.css`, `.html`) |
 | `fix:` | только исправление (`.ts`) |
 | `chore:` | конфиги, скаффолд (`.json`, `.config.*`) |
+
+### Правила работы с репозиторием
+
+1. **Каждый коммит — пуш в оба remote:** после коммита обязательно `git push github master && git push gitflic master`. Remote-ы должны быть синхронизированы всегда.
+2. **Force push запрещён** на любой remote в любой ветке. История — неприкосновенна. Если нужно исправить коммит — делается новый коммит сверху.
+3. **Фича-бранчи:** каждое отдельное направление разработки ведётся в своей ветке (`feat/babylon-migration`, `feat/clouds`, `fix/shadow-acne` и т.д.). В `master` мерж через `git merge --no-ff` после ревью и зелёных тестов.
 
 ### Пример цикла
 
