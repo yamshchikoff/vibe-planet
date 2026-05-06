@@ -55,17 +55,53 @@ Procedural planet generator + flight simulator. Браузерное прило�
 
 ## Commands
 
-- `npm run dev` — запустить dev-сервер
 - `npm test` — прогнать тесты
 - `npm test -- --watch` — вотчер
 - `npm run build` — production-сборка
 
-## Dev Server
+## Dev Server (всегда в QEMU VM)
 
-Сервер поднимается на `0.0.0.0:8080`:
-- Внешний IP: `79.139.138.87`
-- Внутренний IP: `192.168.181.128`
-- URL: `http://79.139.138.87:8080/`
+**Важно:** "поднять сервер", "запустить сервер", "посмотреть в браузере" — всегда означает:
+1. Забилдить проект
+2. Запаковать в tarball
+3. Запустить QEMU VM
+4. Закинуть tarball внутрь VM через SSH и запустить HTTP сервер
+5. Приложение доступно на `http://79.139.138.87:8080/`
+
+### Полный цикл
+
+```bash
+# 1. Build
+npm run build
+
+# 2. Package tarball
+tar czf /home/agent/qemu-vm/planet.tgz dist/
+
+# 3. Boot VM (ждём 60-80с)
+./scripts/boot-vm.sh
+
+# 4. В другом терминале: залить tarball и запустить сервер
+ssh root@localhost -p 2222 "cd /opt && tar xzf planet.tgz && nohup python3 -m http.server 8080 --directory dist/ &"
+
+# 5. Открыть: http://79.139.138.87:8080/
+```
+
+### После изменений (быстрый редеплой)
+
+```bash
+npm run build && tar czf /home/agent/qemu-vm/planet.tgz dist/ && \
+  scp -P 2222 /home/agent/qemu-vm/planet.tgz root@localhost:/opt/ && \
+  ssh root@localhost -p 2222 "cd /opt && tar xzf planet.tgz && pkill -f http.server; nohup python3 -m http.server 8080 --directory dist/ &"
+```
+
+### Серия и порты
+
+| Назначение | Адрес |
+|-----------|-------|
+| Приложение | `http://79.139.138.87:8080/` |
+| SSH в VM | `ssh root@localhost -p 2222` |
+| Внутренний IP хоста | `192.168.181.128` |
+| Локальный хост | `localhost:8080` (проброшен в VM) |
 
 ## Module Map
 
