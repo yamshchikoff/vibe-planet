@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Sun } from './Sun';
-import { DirectionalLight, HemisphereLight, Sprite, Vector3 } from 'three';
+import { DirectionalLight, HemisphereLight, Sprite, Vector3, SpriteMaterial } from 'three';
 
 describe('Sun', () => {
   it('creates with default config', () => {
@@ -49,19 +49,17 @@ describe('Sun', () => {
   it('update changes direction over time', () => {
     const sun = new Sun();
     const dirBefore = sun.getDirection().clone();
-    // Advance time significantly
     for (let i = 0; i < 200; i++) {
       sun.update(1);
     }
     const dirAfter = sun.getDirection().clone();
-    // Direction should have rotated from initial position
     expect(dirBefore.distanceTo(dirAfter)).toBeGreaterThan(0.01);
     sun.dispose();
   });
 
   it('update wraps around (full rotation completes)', () => {
     const sun = new Sun();
-    sun.update(0); // initialize direction
+    sun.update(0);
     const angularSpeed = 0.05;
     const totalAngle = Math.PI * 2;
     const steps = 200;
@@ -77,7 +75,7 @@ describe('Sun', () => {
 
   it('light intensity varies with sun height above horizon', () => {
     const sun = new Sun();
-    sun.update(0); // initialize direction and intensity
+    sun.update(0);
     const y = sun.getDirection().y;
     const expectedBase = 0.3 + 0.7 * Math.max(0, y);
     expect(sun.getLight().intensity).toBeCloseTo(1.5 * expectedBase, 2);
@@ -88,7 +86,6 @@ describe('Sun', () => {
     const sun = new Sun();
     sun.update(0);
     const initial = sun.getHemisphere().intensity;
-    // Night: sun below horizon
     expect(initial).toBeGreaterThanOrEqual(0.12);
     expect(initial).toBeLessThanOrEqual(0.40);
     sun.dispose();
@@ -104,7 +101,7 @@ describe('Sun', () => {
 
   it('sun sprite position updates after update call', () => {
     const sun = new Sun();
-    sun.getSunSprite(); // trigger lazy creation
+    sun.getSunSprite();
     sun.update(0);
     const pos = sun.getSunSprite().position;
     expect(pos.length()).toBeGreaterThan(0);
@@ -136,9 +133,48 @@ describe('Sun', () => {
     sun.dispose();
   });
 
+  it('sun sprite has depthTest enabled', () => {
+    const sun = new Sun();
+    const mat = sun.getSunSprite().material as SpriteMaterial;
+    expect(mat.depthTest).toBe(true);
+    sun.dispose();
+  });
+
+  it('sun sprite has renderOrder 2', () => {
+    const sun = new Sun();
+    expect(sun.getSunSprite().renderOrder).toBe(2);
+    sun.dispose();
+  });
+
+  it('directional light has shadow enabled', () => {
+    const sun = new Sun();
+    expect(sun.getLight().castShadow).toBe(true);
+    sun.dispose();
+  });
+
+  it('shadow map size is configured', () => {
+    const sun = new Sun();
+    const shadow = sun.getLight().shadow;
+    expect(shadow.mapSize.width).toBeGreaterThan(0);
+    expect(shadow.mapSize.height).toBeGreaterThan(0);
+    sun.dispose();
+  });
+
+  it('shadow camera has orthographic frustum configured', () => {
+    const sun = new Sun();
+    const cam = sun.getLight().shadow.camera;
+    expect(isFinite(cam.left)).toBe(true);
+    expect(isFinite(cam.right)).toBe(true);
+    expect(isFinite(cam.top)).toBe(true);
+    expect(isFinite(cam.bottom)).toBe(true);
+    expect(cam.right - cam.left).toBeGreaterThan(0);
+    expect(cam.top - cam.bottom).toBeGreaterThan(0);
+    sun.dispose();
+  });
+
   it('dispose does not throw', () => {
     const sun = new Sun();
     expect(() => sun.dispose()).not.toThrow();
-    expect(() => sun.dispose()).not.toThrow(); // double dispose
+    expect(() => sun.dispose()).not.toThrow();
   });
 });

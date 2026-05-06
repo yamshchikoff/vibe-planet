@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PCFSoftShadowMap } from 'three';
 
 const mockRenderer = vi.hoisted(() => ({
   setSize: vi.fn(),
   setPixelRatio: vi.fn(),
   render: vi.fn(),
   dispose: vi.fn(),
+  shadowMap: {
+    enabled: false,
+    type: 0,
+  },
 }));
 
 vi.mock('three', async () => {
@@ -77,6 +82,16 @@ describe('SceneManager', () => {
     sm.stop();
   });
 
+  it('renderer has shadow mapping enabled', () => {
+    expect(sm.getRenderer().shadowMap.enabled).toBe(true);
+    sm.stop();
+  });
+
+  it('shadow map uses PCFSoftShadowMap', () => {
+    expect(sm.getRenderer().shadowMap.type).toBe(PCFSoftShadowMap);
+    sm.stop();
+  });
+
   describe('floating origin', () => {
     it('resets camera to origin after each frame', () => {
       vi.useFakeTimers();
@@ -84,22 +99,18 @@ describe('SceneManager', () => {
       const cam = sm.getCamera();
       const worldGroup = sm.getWorldGroup();
 
-      // Game logic callback sets camera to world position (as main.ts does)
       sm.onUpdate(() => {
         cam.position.set(100, 200, 300);
       });
 
       sm.start();
 
-      // Advance one frame: callbacks → worldGroup shift → camera reset → render
       vi.advanceTimersByTime(16);
 
-      // worldGroup must be shifted by -camera.position set in callbacks
       expect(worldGroup.position.x).toBe(-100);
       expect(worldGroup.position.y).toBe(-200);
       expect(worldGroup.position.z).toBe(-300);
 
-      // Camera must be reset to origin for render (the fix)
       expect(cam.position.x).toBe(0);
       expect(cam.position.y).toBe(0);
       expect(cam.position.z).toBe(0);

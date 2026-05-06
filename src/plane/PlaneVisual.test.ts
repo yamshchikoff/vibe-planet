@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { PlaneVisual } from './PlaneVisual';
+import { Mesh } from 'three';
 
 describe('PlaneVisual', () => {
   it('creates a group with children', () => {
@@ -32,6 +33,16 @@ describe('PlaneVisual', () => {
     const pv = new PlaneVisual();
     const minZ = Math.min(...pv.getMesh().children.map(c => c.position.z));
     expect(minZ).toBeLessThan(0);
+    pv.dispose();
+  });
+
+  it('all sub-meshes have shadow enabled', () => {
+    const pv = new PlaneVisual();
+    for (const child of pv.getMesh().children) {
+      const mesh = child as Mesh;
+      expect(mesh.castShadow).toBe(true);
+      expect(mesh.receiveShadow).toBe(true);
+    }
     pv.dispose();
   });
 

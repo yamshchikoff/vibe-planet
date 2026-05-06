@@ -74,6 +74,18 @@ describe('LODPlanet', () => {
     b.dispose();
   });
 
+  it('generated chunks have receiveShadow enabled', () => {
+    const p = new LODPlanet({ seed: 42, maxDepth: 3, maxChunks: 50 });
+    p.update(new Vector3(0, 6375, 0));
+    const children = p.getMesh().children;
+    expect(children.length).toBeGreaterThan(0);
+    for (const child of children) {
+      const mesh = child as Mesh;
+      expect(mesh.receiveShadow).toBe(true);
+    }
+    p.dispose();
+  });
+
   it('dispose does not throw', () => {
     const p = new LODPlanet({ seed: 42, maxDepth: 3, maxChunks: 50 });
     p.update(new Vector3(0, 6373, 0));
