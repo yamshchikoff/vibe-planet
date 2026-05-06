@@ -35,7 +35,7 @@ if (!canvas) throw new Error('Canvas element #app not found');
 showInfo('Canvas found ✓');
 // Scene setup with floating origin
 const scene = new SceneManager(canvas);
-const engine = scene.getEngine();
+void scene.getEngine();
 const worldGroup = scene.getWorldGroup();
 const bjsScene = scene.getScene();
 showInfo(`Engine created ✓`);

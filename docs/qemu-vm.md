@@ -93,6 +93,43 @@ Generated files are listed in `.gitignore` and never committed.
 - **SSH**: `ssh root@localhost -p 2222` (password: `planet`)
 - **Console**: Serial console output appears in the QEMU terminal
 
+## Running the Dev Server
+
+The dev server runs **inside the QEMU VM**. Host port `:8080` forwards to guest `:8080`.
+
+### First deploy (after VM boot)
+
+```bash
+# 1. Build the frontend
+cd /home/agent/planet && npm run build
+
+# 2. Package and upload
+tar czf /home/agent/qemu-vm/planet.tgz dist/
+scp -P 2222 /home/agent/qemu-vm/planet.tgz root@localhost:/opt/
+
+# 3. Extract and serve inside the VM
+ssh root@localhost -p 2222 "cd /opt && tar xzf planet.tgz && nohup python3 -m http.server 8080 --directory dist/ &"
+
+# 4. Open http://79.139.138.87:8080/
+```
+
+### Redeploy (after code changes)
+
+```bash
+npm run build && tar czf /home/agent/qemu-vm/planet.tgz dist/ && \
+  scp -P 2222 /home/agent/qemu-vm/planet.tgz root@localhost:/opt/ && \
+  ssh root@localhost -p 2222 \
+    "cd /opt && tar xzf planet.tgz && \
+     pkill -f 'python3 -m http.server' 2>/dev/null; \
+     nohup python3 -m http.server 8080 --directory dist/ &"
+```
+
+### Notes
+
+- VM takes ~60-80 seconds to boot (cloud-init + SSH)
+- Port 8080 connection resets during boot — wait for SSH to respond
+- Kill the HTTP server inside VM: `ssh root@localhost -p 2222 "pkill -f http.server"`
+
 ## Troubleshooting
 
 **Build hangs on package install**: The VM is slow in TCG. Wait 15+ minutes. Check QEMU process: `ps aux | grep qemu`.
