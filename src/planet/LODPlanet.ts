@@ -404,7 +404,7 @@ export class LODPlanet {
     mat.clearCoat.isEnabled = true;
     mat.clearCoat.intensity = 0.04;
 
-    mat.useVertexColor = true;
+    (mat as unknown as { useVertexColor: boolean }).useVertexColor = true;
     mesh.material = mat;
     mesh.receiveShadows = true;
 

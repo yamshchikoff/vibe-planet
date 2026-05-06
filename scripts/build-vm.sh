@@ -15,7 +15,7 @@ ALPINE_IMAGE="generic_alpine-${ALPINE_VERSION}-x86_64-bios-cloudinit-r0.qcow2"
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/cloud/${ALPINE_IMAGE}"
 
 EXT4_LABEL="${EXT4_LABEL:-/}"
-SSH_PUBKEY="${SSH_PUBKEY:-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB1PoYsgFMbEmdT5uuOCuLran2gOiUchfe7uQsUQPH34 agent@ubuntu-with-agents}"
+SSH_PUBKEY="${SSH_PUBKEY:-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEo97MVgzjJTqbdHTexhALt2XhNOGtPMWTbopl2V0+5f me@yamshchikov.ru}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
