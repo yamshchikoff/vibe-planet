@@ -1,6 +1,16 @@
 #!/bin/bash
-# Boot the QEMU full-emulation VM
-# Prerequisites: /home/agent/qemu-vm/ must be set up (see docs/qemu-vm.md)
+# Boot the QEMU full-emulation VM and expose the dev server on host port 8080.
+#
+# Prerequisites:
+#   /home/agent/qemu-vm/ must be set up with overlay.raw and seed.iso
+#   (run ./scripts/build-vm.sh to prepare)
+#
+# After boot (~60-80s):
+#   1. Upload tarball: scp -P 2222 /home/agent/qemu-vm/planet.tgz root@localhost:/opt/
+#   2. Start server:   ssh root@localhost -p 2222 "cd /opt && tar xzf planet.tgz && nohup python3 -m http.server 8080 --directory dist/ &"
+#   3. Open:           http://79.139.138.87:8080/
+#
+# See docs/qemu-vm.md for full workflow.
 set -e
 QEMU_DIR="${QEMU_DIR:-/home/agent/qemu-vm}"
 if [ ! -f "$QEMU_DIR/overlay.raw" ]; then
