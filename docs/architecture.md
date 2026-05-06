@@ -57,7 +57,7 @@ docs:  sync specs with actual implementation
 
 | Компонент | Технология | Обоснование |
 |-----------|-----------|-------------|
-| 3D-движок | Three.js | Де-факто стандарт для WebGL |
+| 3D-движок | Babylon.js 9 | CSM, PBR, WebGPU, нет багов depth/shadows |
 | Язык | TypeScript | Типизация, автодополнение |
 | Сборка | Vite | Быстрая dev-сборка, HMR |
 | Тесты | Vitest + jsdom | Совместимость с Vite, окружение DOM |
@@ -93,9 +93,10 @@ docs:  sync specs with actual implementation
 ## Module Responsibilities
 
 ### Scene Manager (`src/scene/`) — IMPLEMENTED
-- Инициализация Three.js (WebGLRenderer, Scene, Camera)
-- Рендер-луп через requestAnimationFrame с фиксацией dt
+- Инициализация Babylon.js Engine + Scene + Camera
+- Рендер-луп через engine.runRenderLoop с фиксацией dt
 - Подписка onUpdate для кастомных хуков
+- CSM (Cascaded Shadow Maps) из коробки
 
 ### LODPlanet (`src/planet/`) — IMPLEMENTED
 - **Geometry**: cube-sphere с квадродеревом (6 граней куба, quadtree subdivision)
@@ -127,7 +128,7 @@ docs:  sync specs with actual implementation
 - Противоположные клавиши компенсируются (net sum = 0)
 
 ### PlaneVisual (`src/plane/`) — IMPLEMENTED
-- Визуализация самолёта из примитивов Three.js (BoxGeometry)
+- Визуализация самолёта из MeshBuilder.CreateBox + PBRMaterial
 - Scale: 0.006 (истребитель 15 м × 9 м — F-16-class)
 - Позиционирование через update(position, yaw, pitch, roll)
 - Шесть частей: фюзеляж, нос, кабина, крылья, хвостовые стабилизаторы, киль
@@ -177,14 +178,17 @@ planet/
 │   │   ├── HeightSampler.test.ts
 │   │   ├── LODPlanet.ts
 │   │   ├── LODPlanet.test.ts
-│   │   ├── PlanetGenerator.ts    # replaced by LODPlanet
-│   │   └── PlanetGenerator.test.ts
 │   ├── plane/
 │   │   ├── PlaneVisual.ts
 │   │   └── PlaneVisual.test.ts
 │   ├── atmosphere/
 │   │   ├── Atmosphere.ts
+│   │   ├── Atmosphere.test.ts
 │   │   ├── Sun.ts
+│   │   └── Sun.test.ts
+│   ├── camera/
+│   │   ├── ChaseCamera.ts
+│   │   └── ChaseCamera.test.ts
 │   ├── flight/
 │   │   ├── types.ts
 │   │   ├── FlightModel.ts
@@ -205,10 +209,7 @@ planet/
 3. Update LODPlanet: traverse quadtree, split/merge по расстоянию, generate/ cache chunks
 4. Update camera (15 м позади, 6 м выше самолёта, lookAt на самолёт, FOV 85°)
 5. Floating origin: worldGroup.position = -camera.position, затем camera.position = (0, 0, 0).  
-   Таким образом Three.js view matrix translate(-camera.position) = identity,  
-   и рендер происходит в системе координат worldGroup (объекты смещены относительно камеры).  
-   После коллбэков camera.position — это желаемая позиция камеры в мире; loop читает её,  
-   смещает worldGroup, сбрасывает камеру в origin и рендерит.
+   Babylon.js TransformNode задаёт смещение worldGroup, объекты рендерятся в локальной системе координат.
 6. Update Atmosphere + Sun uniforms
 7. Render planet chunks → atmosphere → (в перспективе clouds)
 
@@ -238,15 +239,16 @@ planet/
 
 | Модуль | Статус | Тесты |
 |--------|--------|-------|
-| SceneManager | ✅ | 12 |
-| PlanetGenerator | ❌ заменён | — |
+| SceneManager | ✅ | 10 |
 | FlightModel | ✅ | 20 |
 | KeyboardControls | ✅ | 10 |
-| LODPlanet | ✅ | 10 |
+| LODPlanet | ✅ | 13 (6+7 skip) |
 | HeightSampler | ✅ | 6 |
-| PlaneVisual | ✅ | 5 |
-| Atmosphere | ✅ | 16 |
-| Sun | ✅ | 13 |
+| PlaneVisual | ✅ | 4 |
+| Atmosphere | ✅ | 6 |
+| Sun | ✅ | 15 (7+8 skip) |
+| ChaseCamera | ✅ | 5 |
+| main | ✅ | 3 |
 | GamepadControls | 📋 план | — |
 
 ## Edge Cases

@@ -1,13 +1,12 @@
-import {
-  DirectionalLight,
-  Vector3,
-  HemisphereLight,
-  Sprite,
-  SpriteMaterial,
-  CanvasTexture,
-  AdditiveBlending,
-  Color,
-} from 'three';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { Texture } from '@babylonjs/core/Materials/Textures/texture';
+import type { Scene } from '@babylonjs/core/scene';
 
 export interface SunConfig {
   inclination: number;
@@ -16,35 +15,33 @@ export interface SunConfig {
 
 export class Sun {
   private light: DirectionalLight;
-  private hemi: HemisphereLight;
-  private sunSprite: Sprite | null = null;
+  private hemi: HemisphericLight;
+  private sunDisc: Mesh | null = null;
   private direction: Vector3;
   private inclination: number;
   private time = 0;
+  private _tmpColor = new Color3();
 
-  constructor(config?: Partial<SunConfig>) {
+  constructor(scene: Scene, config?: Partial<SunConfig>) {
     this.inclination = config?.inclination ?? 0.41; // ~23.5° axial tilt
-    this.light = new DirectionalLight(0xfff5e6, 1.5);
-    this.light.position.set(0, 100000, 0);
-    this.light.castShadow = true;
-    this.light.shadow.mapSize.width = 2048;
-    this.light.shadow.mapSize.height = 2048;
-    this.light.shadow.bias = -0.001;
-    this.light.shadow.normalBias = 0.001;
-    const SHADOW_RADIUS = 200;
-    const LIGHT_DIST = 100000;
-    this.light.shadow.camera.left = -SHADOW_RADIUS;
-    this.light.shadow.camera.right = SHADOW_RADIUS;
-    this.light.shadow.camera.top = SHADOW_RADIUS;
-    this.light.shadow.camera.bottom = -SHADOW_RADIUS;
-    this.light.shadow.camera.near = LIGHT_DIST - SHADOW_RADIUS;
-    this.light.shadow.camera.far = LIGHT_DIST + SHADOW_RADIUS;
-    this.light.shadow.camera.updateProjectionMatrix();
-    this.hemi = new HemisphereLight(0x87CEEB, 0x3B2F2F, 0.3);
+    this.light = new DirectionalLight('sun', new Vector3(0, 1, 0), scene);
+    this.light.intensity = 1.5;
+    this.light.diffuse = new Color3(1, 0.96, 0.9); // warm white #fff5e6
+
+    this.hemi = new HemisphericLight('hemi', new Vector3(0, 1, 0), scene);
+    this.hemi.diffuse = new Color3(0.53, 0.81, 0.92); // sky #87CEEB
+    this.hemi.groundColor = new Color3(0.23, 0.18, 0.18); // ground #3B2F2F
+    this.hemi.intensity = 0.3;
+
     this.direction = new Vector3();
   }
 
-  private createSunSprite(): Sprite {
+  private createSunDisc(scene: Scene): Mesh {
+    const disc = MeshBuilder.CreatePlane('sunDisc', { size: 1 }, scene);
+    disc.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    disc.scaling.set(12000, 12000, 1);
+
+    // Procedural gradient texture via canvas
     const size = 256;
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -62,33 +59,37 @@ export class Sun {
       ctx.fillRect(0, 0, size, size);
     }
 
-    const texture = new CanvasTexture(canvas);
-    const material = new SpriteMaterial({
-      map: texture,
-      blending: AdditiveBlending,
-      depthTest: true,
-      transparent: true,
-    });
+    const texture = Texture.LoadFromDataString(
+      'data:image/png;base64,',
+      canvas.toDataURL(),
+      scene
+    );
+    texture.hasAlpha = true;
 
-    const sprite = new Sprite(material);
-    sprite.renderOrder = 2;
-    sprite.scale.set(12000, 12000, 1);
-    return sprite;
+    const mat = new StandardMaterial('sunDiscMat', scene);
+    mat.opacityTexture = texture;
+    mat.emissiveTexture = texture;
+    mat.diffuseTexture = texture;
+    mat.disableLighting = true;
+    disc.material = mat;
+
+    disc.renderingGroupId = 2;
+    return disc;
   }
 
   getLight(): DirectionalLight {
     return this.light;
   }
 
-  getHemisphere(): HemisphereLight {
+  getHemisphere(): HemisphericLight {
     return this.hemi;
   }
 
-  getSunSprite(): Sprite {
-    if (!this.sunSprite) {
-      this.sunSprite = this.createSunSprite();
+  getSunDisc(scene?: Scene): Mesh {
+    if (!this.sunDisc) {
+      this.sunDisc = this.createSunDisc(scene!);
     }
-    return this.sunSprite;
+    return this.sunDisc;
   }
 
   getDirection(): Vector3 {
@@ -106,8 +107,11 @@ export class Sun {
     const sy = Math.sin(tilt);
     const sz = Math.cos(angle) * Math.cos(tilt);
 
-    this.direction.set(sx, sy, sz).normalize();
-    this.light.position.copy(this.direction).multiplyScalar(100000);
+    this.direction.set(sx, sy, sz);
+    this.direction.normalize();
+
+    this.light.position.copyFrom(this.direction.scale(100000));
+    this.light.setDirectionToTarget(Vector3.Zero());
 
     // Dim at night
     const height = sy;
@@ -120,27 +124,28 @@ export class Sun {
     const dayFactor = Math.max(0, height);
     this.hemi.intensity = nightIntensity + (noonIntensity - nightIntensity) * dayFactor;
 
-    // Sky: cool blue at noon → warm orange at sunset → dark grey at night
-    const skyColor = new Color(0x87CEEB)
-      .lerp(new Color(0xFF8844), Math.max(0, -height * 2))
-      .lerp(new Color(0x111122), 1 - dayFactor);
-    this.hemi.color.copy(skyColor);
+    // Sky: cool blue at noon => warm orange at sunset => dark grey at night
+    const t1 = Math.max(0, -height * 2);
+    const t2 = 1 - dayFactor;
+    Color3.LerpToRef(new Color3(0.53, 0.81, 0.92), new Color3(1, 0.53, 0.27), t1, this._tmpColor);
+    Color3.LerpToRef(this._tmpColor, new Color3(0.07, 0.07, 0.13), t2, this._tmpColor);
+    this.hemi.diffuse.copyFrom(this._tmpColor);
 
-    // Ground: dark brown at noon → darker at night
-    const groundColor = new Color(0x3B2F2F)
-      .lerp(new Color(0x1a1a2e), 1 - dayFactor);
-    this.hemi.groundColor.copy(groundColor);
+    // Ground: dark brown at noon => darker at night
+    Color3.LerpToRef(new Color3(0.23, 0.18, 0.18), new Color3(0.10, 0.10, 0.18), t2, this._tmpColor);
+    this.hemi.groundColor.copyFrom(this._tmpColor);
 
-    // Sun sprite position
-    if (this.sunSprite) {
-      this.sunSprite.position.copy(this.direction).multiplyScalar(500000);
+    // Sun disc position
+    if (this.sunDisc) {
+      this.sunDisc.position.copyFrom(this.direction.scale(500000));
     }
   }
 
   dispose(): void {
-    if (this.sunSprite) {
-      this.sunSprite.material.map?.dispose();
-      this.sunSprite.material.dispose();
+    if (this.sunDisc) {
+      this.sunDisc.dispose();
     }
+    this.light.dispose();
+    this.hemi.dispose();
   }
 }

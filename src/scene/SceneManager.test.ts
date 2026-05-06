@@ -1,24 +1,50 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PCFSoftShadowMap } from 'three';
 
-const mockRenderer = vi.hoisted(() => ({
+let loopFn: (() => void) | null = null;
+
+const mockEngine = {
+  runRenderLoop: vi.fn((fn: () => void) => { loopFn = fn; }),
+  stopRenderLoop: vi.fn(() => { loopFn = null; }),
   setSize: vi.fn(),
-  setPixelRatio: vi.fn(),
-  render: vi.fn(),
   dispose: vi.fn(),
-  shadowMap: {
-    enabled: false,
-    type: 0,
-  },
+};
+
+// Realistic Vec3 mock: stores x,y,z, supports scale/negate/copyFrom/set
+function createVec3(x = 0, y = 0, z = 0) {
+  const v = { x, y, z,
+    set: vi.fn(function (nx: number, ny: number, nz: number) { v.x = nx; v.y = ny; v.z = nz; }),
+    copyFrom: vi.fn(function (other: { x: number; y: number; z: number }) { v.x = other.x; v.y = other.y; v.z = other.z; }),
+    scale: vi.fn(function (s: number) { return createVec3(v.x * s, v.y * s, v.z * s); }),
+  };
+  return v;
+}
+
+vi.mock('@babylonjs/core/Engines/engine', () => ({
+  Engine: vi.fn().mockImplementation(function () { return mockEngine; }),
 }));
 
-vi.mock('three', async () => {
-  const actual = await vi.importActual('three');
-  return {
-    ...(actual as object),
-    WebGLRenderer: vi.fn(function () { return mockRenderer; }),
-  };
-});
+vi.mock('@babylonjs/core/scene', () => ({
+  Scene: vi.fn().mockImplementation(function () {
+    return { render: vi.fn(), clearColor: { r: 0, g: 0, b: 0, a: 1 } };
+  }),
+}));
+
+vi.mock('@babylonjs/core/Cameras/freeCamera', () => ({
+  FreeCamera: vi.fn().mockImplementation(function () {
+    return {
+      position: createVec3(0, 0, 0),
+      fov: 0,
+      minZ: 0,
+      maxZ: 0,
+    };
+  }),
+}));
+
+vi.mock('@babylonjs/core/Meshes/transformNode', () => ({
+  TransformNode: vi.fn().mockImplementation(function () {
+    return { position: createVec3(0, 0, 0) };
+  }),
+}));
 
 import { SceneManager } from './SceneManager';
 
@@ -28,6 +54,7 @@ describe('SceneManager', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    loopFn = null;
     canvas = document.createElement('canvas');
     canvas.width = 800;
     canvas.height = 600;
@@ -39,15 +66,15 @@ describe('SceneManager', () => {
     sm.stop();
   });
 
-  it('provides access to scene, camera, and renderer', () => {
+  it('provides access to scene, camera, and engine', () => {
     expect(sm.getScene()).toBeDefined();
     expect(sm.getCamera()).toBeDefined();
-    expect(sm.getRenderer()).toBeDefined();
+    expect(sm.getEngine()).toBeDefined();
     sm.stop();
   });
 
-  it('default FOV is 75 (flight sim standard)', () => {
-    expect(sm.getCamera().fov).toBe(75);
+  it('default FOV is 75 degrees (~1.309 rad in Babylon.js)', () => {
+    expect(sm.getCamera().fov).toBeCloseTo(1.309, 2);
     sm.stop();
   });
 
@@ -82,74 +109,44 @@ describe('SceneManager', () => {
     sm.stop();
   });
 
-  it('renderer has shadow mapping enabled', () => {
-    expect(sm.getRenderer().shadowMap.enabled).toBe(true);
-    sm.stop();
-  });
-
-  it('shadow map uses PCFSoftShadowMap', () => {
-    expect(sm.getRenderer().shadowMap.type).toBe(PCFSoftShadowMap);
-    sm.stop();
-  });
-
   describe('floating origin', () => {
     it('resets camera to origin after each frame', () => {
-      vi.useFakeTimers();
-
       const cam = sm.getCamera();
       const worldGroup = sm.getWorldGroup();
 
       sm.onUpdate(() => {
-        cam.position.set(100, 200, 300);
+        cam.position.x = 100;
+        cam.position.y = 200;
+        cam.position.z = 300;
       });
 
       sm.start();
-
-      vi.advanceTimersByTime(16);
+      loopFn?.();
 
       expect(worldGroup.position.x).toBe(-100);
       expect(worldGroup.position.y).toBe(-200);
       expect(worldGroup.position.z).toBe(-300);
-
       expect(cam.position.x).toBe(0);
       expect(cam.position.y).toBe(0);
       expect(cam.position.z).toBe(0);
 
       sm.stop();
-      vi.useRealTimers();
     });
   });
 
   describe('resize', () => {
-    it('resize updates renderer size to window dimensions', () => {
+    it('resize updates engine size to window dimensions', () => {
       window.innerWidth = 1024;
       window.innerHeight = 768;
       sm.resize();
-      expect(mockRenderer.setSize).toHaveBeenCalledWith(1024, 768);
+      expect(mockEngine.setSize).toHaveBeenCalledWith(1024, 768);
     });
 
-    it('resize updates camera aspect ratio', () => {
-      window.innerWidth = 1024;
-      window.innerHeight = 768;
-      sm.resize();
-      const cam = sm.getCamera();
-      expect(cam.aspect).toBe(1024 / 768);
-    });
-
-    it('calls updateProjectionMatrix after resize', () => {
-      const cam = sm.getCamera();
-      const spy = vi.spyOn(cam, 'updateProjectionMatrix');
-      window.innerWidth = 1024;
-      window.innerHeight = 768;
-      sm.resize();
-      expect(spy).toHaveBeenCalled();
-    });
-
-    it('window resize event triggers SceneManager.resize', () => {
+    it('window resize event triggers resize', () => {
       window.innerWidth = 1024;
       window.innerHeight = 768;
       window.dispatchEvent(new Event('resize'));
-      expect(mockRenderer.setSize).toHaveBeenCalledWith(1024, 768);
+      expect(mockEngine.setSize).toHaveBeenCalledWith(1024, 768);
     });
   });
 });

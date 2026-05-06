@@ -1,24 +1,31 @@
-import {
-  SphereGeometry,
-  ShaderMaterial,
-  Mesh,
-  BackSide,
-  Vector3,
-  Color,
-} from 'three';
+import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
+import { Material } from '@babylonjs/core/Materials/material';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import type { Scene } from '@babylonjs/core/scene';
 
 const vertexShader = `
+#include<meshUboDeclaration>
+#include<sceneUboDeclaration>
+
+attribute vec3 position;
+attribute vec3 normal;
+
 varying vec3 vWorldPosition;
 varying vec3 vNormal;
 void main() {
-  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vec4 worldPos = world * vec4(position, 1.0);
   vWorldPosition = worldPos.xyz;
-  vNormal = normalize(normalMatrix * normal);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vNormal = normalize((world * vec4(normal, 0.0)).xyz);
+  gl_Position = viewProjection * world * vec4(position, 1.0);
 }
 `;
 
 const fragmentShader = `
+uniform vec3 cameraPosition;
+
 uniform vec3 sunDirection;
 uniform vec3 planetCenter;
 uniform float planetRadius;
@@ -32,27 +39,20 @@ void main() {
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   vec3 normal = normalize(vNormal);
 
-  // Altitude above planet surface
   float distFromCenter = length(vWorldPosition - planetCenter);
   float altitude = max(0.0, distFromCenter - planetRadius);
 
-  // Atmosphere density falls off exponentially with altitude
   float density = exp(-altitude / (atmosphereHeight * 0.25));
 
-  // Angle between view and normal (limb glow — thicker at edges)
   float rim = 1.0 - max(0.0, dot(viewDir, normal));
   rim = pow(rim, 3.0);
 
-  // Angle between sun and normal (sun-facing side brighter)
   float sunAngle = max(0.0, dot(normal, normalize(sunDirection)));
 
-  // Optical depth
   float depth = rim * 0.8 + 0.2;
 
-  // Combine color
   vec3 color = atmosphereColor * depth * density * (sunAngle * 1.2 + 0.2);
 
-  // Fade to transparent at the top of the atmosphere
   float fade = 1.0 - smoothstep(0.0, atmosphereHeight, altitude);
 
   gl_FragColor = vec4(color, fade * 0.5);
@@ -67,29 +67,36 @@ export interface AtmosphereConfig {
 export class Atmosphere {
   private mesh: Mesh;
   private material: ShaderMaterial;
+  private _tmpVec = new Vector3();
 
-  constructor(config: AtmosphereConfig) {
+  constructor(config: AtmosphereConfig, scene: Scene) {
     const R = config.planetRadius;
     const H = config.atmosphereHeight;
 
-    const geo = new SphereGeometry(R + H * 0.5, 48, 32);
-    this.material = new ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      uniforms: {
-        sunDirection: { value: new Vector3(1, 0.5, 0).normalize() },
-        planetCenter: { value: new Vector3(0, 0, 0) },
-        planetRadius: { value: R },
-        atmosphereHeight: { value: H },
-        atmosphereColor: { value: new Color(0x66aaff) },
-      },
-      side: BackSide,
-      transparent: true,
-      depthWrite: false,
-    });
+    this.mesh = MeshBuilder.CreateSphere('atmoSphere', { diameter: (R + H * 0.5) * 2, segments: 48 }, scene);
 
-    this.mesh = new Mesh(geo, this.material);
-    this.mesh.renderOrder = 1;
+    this.material = new ShaderMaterial(
+      'atmo',
+      scene,
+      { vertexSource: vertexShader, fragmentSource: fragmentShader },
+      {
+        attributes: ['position', 'normal'],
+        uniforms: ['world', 'view', 'projection', 'viewProjection', 'cameraPosition', 'sunDirection', 'planetCenter', 'planetRadius', 'atmosphereHeight', 'atmosphereColor'],
+        needAlphaBlending: true,
+      }
+    );
+
+    this.material.backFaceCulling = true;
+    this.material.sideOrientation = Material.ClockWiseSideOrientation;
+
+    this.material.setVector3('sunDirection', new Vector3(1, 0.5, 0).normalize());
+    this.material.setVector3('planetCenter', Vector3.Zero());
+    this.material.setFloats('planetRadius', [R]);
+    this.material.setFloats('atmosphereHeight', [H]);
+    this.material.setColor3('atmosphereColor', new Color3(0.4, 0.67, 1));
+
+    this.mesh.material = this.material;
+    this.mesh.renderingGroupId = 1;
   }
 
   getMesh(): Mesh {
@@ -97,14 +104,16 @@ export class Atmosphere {
   }
 
   update(cameraPos: Vector3, sunDir: Vector3): void {
-    this.material.uniforms.sunDirection.value.copy(sunDir);
+    this.material.setVector3('sunDirection', sunDir);
     // Planet center at render time = -camera.position (floating origin shift)
-    this.material.uniforms.planetCenter.value.copy(cameraPos).negate();
+    this._tmpVec.copyFrom(cameraPos);
+    this._tmpVec.negateInPlace();
+    this.material.setVector3('planetCenter', this._tmpVec);
     this.mesh.position.set(0, 0, 0);
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
+    this.mesh.dispose();
     this.material.dispose();
   }
 }

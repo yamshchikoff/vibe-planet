@@ -1,87 +1,74 @@
-import { Scene, PerspectiveCamera, WebGLRenderer, Group, ACESFilmicToneMapping, Color, SRGBColorSpace, PCFSoftShadowMap } from 'three';
+import { Engine } from '@babylonjs/core/Engines/engine';
+import { Scene } from '@babylonjs/core/scene';
+import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Color4 } from '@babylonjs/core/Maths/math.color';
 
 type UpdateCallback = (dt: number) => void;
 
 export class SceneManager {
+  private engine: Engine;
   private scene: Scene;
-  private camera: PerspectiveCamera;
-  private renderer: WebGLRenderer;
-  private worldGroup: Group;
+  private camera: FreeCamera;
+  private worldGroup: TransformNode;
   private running = false;
-  private rafId: number | null = null;
   private lastTime: number | null = null;
   private updateCallbacks: UpdateCallback[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
-    this.renderer = new WebGLRenderer({
-      canvas,
-      antialias: true,
-      logarithmicDepthBuffer: true,
-    });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.toneMapping = ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
-    this.renderer.outputColorSpace = SRGBColorSpace;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    this.engine = new Engine(canvas, true);
 
-    this.scene = new Scene();
-    this.scene.background = new Color(0x050510);
+    this.scene = new Scene(this.engine);
+    this.scene.clearColor = new Color4(0.02, 0.02, 0.06, 1); // #050510
 
-    // Floating origin container: all world objects go here
-    // Each frame, worldGroup.position = -camera.position to keep camera near origin
-    this.worldGroup = new Group();
-    this.scene.add(this.worldGroup);
+    this.camera = new FreeCamera('camera', Vector3.Zero(), this.scene);
+    this.camera.fov = 75 * Math.PI / 180; // radians
+    this.camera.minZ = 0.1;
+    this.camera.maxZ = 2000000;
 
-    this.camera = new PerspectiveCamera(75, 1, 0.1, 2000000);
-    this.camera.position.set(0, 6373, 0);
+    this.worldGroup = new TransformNode('worldGroup', this.scene);
 
     this.resize();
     window.addEventListener('resize', this.resize);
   }
 
-  getWorldGroup(): Group {
+  getWorldGroup(): TransformNode {
     return this.worldGroup;
   }
 
   resize = (): void => {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.renderer.setSize(w, h);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-  };
-
-  private loop = (time: number): void => {
-    if (!this.running) return;
-
-    if (this.lastTime !== null) {
-      const dt = Math.min((time - this.lastTime) / 1000, 1 / 30);
-      this.updateCallbacks.forEach((cb) => cb(dt));
-    }
-    this.lastTime = time;
-
-    // Floating origin: keep camera at origin for rendering precision
-    this.worldGroup.position.copy(this.camera.position).negate();
-    this.camera.position.set(0, 0, 0);
-
-    this.renderer.render(this.scene, this.camera);
-    this.rafId = requestAnimationFrame(this.loop);
+    this.engine.setSize(w, h);
   };
 
   start(): void {
     if (this.running) return;
     this.running = true;
     this.lastTime = performance.now();
-    this.rafId = requestAnimationFrame(this.loop);
+
+    this.engine.runRenderLoop(() => {
+      const time = performance.now();
+      if (this.lastTime !== null) {
+        const dt = Math.min((time - this.lastTime) / 1000, 1 / 30);
+        for (const cb of this.updateCallbacks) {
+          cb(dt);
+        }
+      }
+      this.lastTime = time;
+
+      // Floating origin: keep camera at origin, shift world objects
+      this.worldGroup.position.copyFrom(this.camera.position.scale(-1));
+      this.camera.position.set(0, 0, 0);
+
+      this.scene.render();
+    });
   }
 
   stop(): void {
     this.running = false;
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
+    this.engine.stopRenderLoop();
     this.lastTime = null;
     window.removeEventListener('resize', this.resize);
   }
@@ -94,11 +81,11 @@ export class SceneManager {
     return this.scene;
   }
 
-  getCamera(): PerspectiveCamera {
+  getCamera(): FreeCamera {
     return this.camera;
   }
 
-  getRenderer(): WebGLRenderer {
-    return this.renderer;
+  getEngine(): Engine {
+    return this.engine;
   }
 }
