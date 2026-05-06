@@ -1,11 +1,12 @@
 import {
-  Group,
   Mesh,
-  MeshPhysicalMaterial,
-  BufferGeometry,
-  BufferAttribute,
+  MeshBuilder,
+  VertexData,
+  PBRMaterial,
+  TransformNode,
   Vector3,
-} from 'three';
+  type Scene,
+} from '@babylonjs/core';
 import { HeightSampler } from './HeightSampler';
 
 export interface LODConfig {
@@ -28,7 +29,8 @@ const DEFAULTS: Required<LODConfig> = {
   biomeWarpAmplitude: 0.035,
 };
 
-// Cube face definitions: axis (0=X,1=Y,2=Z), sign (+/-1)
+const AXES = ['x', 'y', 'z'] as const;
+
 const FACES: { axis: number; sign: number }[] = [
   { axis: 0, sign: 1 },
   { axis: 0, sign: -1 },
@@ -47,9 +49,6 @@ const FACE_NORMALS = [
   new Vector3(0, 0, -1),
 ];
 
-// Faces where uvToDir produces inward-facing triangle normals.
-// The winding direction depends on how u/v map to the 3 axes per face.
-// Affected: faces where (sign===-1 && axis!==1) or (sign===1 && axis===1)
 const FACE_WINDING_FLIP = [false, true, true, false, false, true];
 
 const _tmpVec = new Vector3();
@@ -65,11 +64,9 @@ function uvToDir(faceIdx: number, u: number, v: number): Vector3 {
   let ci = 0;
   const out = new Vector3();
   for (let i = 0; i < 3; i++) {
-    if (i === axis) {
-      out.setComponent(i, sign);
-    } else {
-      out.setComponent(i, coords[ci++]);
-    }
+    const val = i === axis ? sign : coords[ci++];
+    const key = AXES[i];
+    (out as Record<string, number>)[key] = val;
   }
   return out;
 }
@@ -85,7 +82,6 @@ function lerpColor(
 function getBiomeColor(normalizedHeight: number, lat: number): [number, number, number] {
   const h = Math.max(0, Math.min(1, normalizedHeight));
 
-  // Dynamic snow threshold: descends toward poles (polar caps)
   const snowThreshold = Math.max(
     0.25,
     0.85 - Math.max(0, Math.abs(lat) - Math.PI / 3) * 0.8
@@ -93,8 +89,6 @@ function getBiomeColor(normalizedHeight: number, lat: number): [number, number, 
 
   const snowColor: [number, number, number] = [0.941, 0.941, 0.941];
 
-  // Build sorted biome array with snowThreshold inserted in the correct position.
-  // Since snowThreshold ≥ 0.25, it can fall between any of: 0.25, 0.3, 0.55, 0.7, or above.
   let thresholds: number[];
   let colors: [number, number, number][];
 
@@ -138,7 +132,6 @@ function getBiomeColor(normalizedHeight: number, lat: number): [number, number, 
     ];
   }
 
-  // Find which segment h falls into and smoothstep-interpolate
   for (let i = 0; i < thresholds.length - 1; i++) {
     if (h >= thresholds[i] && h < thresholds[i + 1]) {
       const range = thresholds[i + 1] - thresholds[i];
@@ -159,42 +152,39 @@ function getBiomePBR(normalizedHeight: number, lat: number): [number, number] {
     0.85 - Math.max(0, Math.abs(lat) - Math.PI / 3) * 0.8
   );
 
-  if (h < 0.1) {
-    return [0.05, 0.00]; // deep water
-  } else if (h < 0.25) {
-    return [0.20, 0.00]; // shallow water
-  } else if (h < 0.3) {
-    return [0.90, 0.00]; // sand
-  } else if (h < 0.55) {
-    return [0.80, 0.00]; // grassland
-  } else if (h < 0.7) {
-    return [0.70, 0.00]; // forest
-  } else if (h < snowThreshold) {
-    // Rock → high stone: smooth transition
+  if (h < 0.1) return [0.05, 0.00];
+  if (h < 0.25) return [0.20, 0.00];
+  if (h < 0.3) return [0.90, 0.00];
+  if (h < 0.55) return [0.80, 0.00];
+  if (h < 0.7) return [0.70, 0.00];
+  if (h < snowThreshold) {
     const t = Math.max(0, Math.min(1, (h - 0.7) / (snowThreshold - 0.7)));
     const s = t * t * (3 - 2 * t);
-    const roughness = 0.55 + (0.45 - 0.55) * s;
-    const metalness = 0.05 + (0.10 - 0.05) * s;
-    return [roughness, metalness];
-  } else {
-    return [0.95, 0.00]; // snow
+    return [0.55 + (0.45 - 0.55) * s, 0.05 + (0.10 - 0.05) * s];
   }
+  return [0.95, 0.00];
 }
 
 export class LODPlanet {
   private config: Required<LODConfig>;
   private sampler: HeightSampler;
-  private group: Group;
   private cache: Map<string, ChunkCacheEntry> = new Map();
+  private scene: Scene;
+  private root: TransformNode;
+  private activeMeshes: Set<string> = new Set();
 
-  constructor(config?: Partial<LODConfig>) {
+  constructor(config?: Partial<LODConfig>, scene?: Scene) {
     this.config = { ...DEFAULTS, ...config };
     this.sampler = new HeightSampler(this.config.seed);
-    this.group = new Group();
+    this.scene = scene!;
+    this.root = scene ? new TransformNode('planetRoot', scene) : null!;
   }
 
-  getMesh(): Group {
-    return this.group;
+  getRoot(): TransformNode {
+    if (!this.root) {
+      this.root = new TransformNode('planetRoot', this.scene);
+    }
+    return this.root;
   }
 
   getHeightAt(worldPos: Vector3): number {
@@ -202,6 +192,7 @@ export class LODPlanet {
   }
 
   update(cameraPos: Vector3): void {
+    if (!this.scene) return;
     const now = performance.now();
     const R = this.config.planetRadius;
     const maxDepth = this.config.maxDepth;
@@ -209,58 +200,57 @@ export class LODPlanet {
     const distFromSurface = Math.max(0, distFromCenter - R);
     const heightAmp = this.config.heightAmplitude;
 
-    // Determine max depth for this frame based on distance
     let effectiveDepth = maxDepth;
     if (distFromSurface > 0) {
       const levels = Math.floor(Math.log2(distFromSurface / 5 + 1));
       effectiveDepth = Math.max(0, maxDepth - levels);
     }
 
-    // Collect all nodes to generate
     const needed: { faceIdx: number; depth: number; tx: number; ty: number }[] = [];
 
     for (let faceIdx = 0; faceIdx < 6; faceIdx++) {
-      // Face visibility: dot(faceNormal, cameraDir) > -0.2
-      const camDir = _tmpVec.copy(cameraPos).normalize();
+      const camDir = _tmpVec.copyFrom(cameraPos).normalize();
       const dot = camDir.dot(FACE_NORMALS[faceIdx]);
-      if (dot < -0.2) continue; // facing away
+      if (dot < -0.2) continue;
 
       this.traverseFace(faceIdx, cameraPos, effectiveDepth, 0, 0, 0, needed);
     }
 
-    // Keep track of which chunks we need this frame
     const neededSet = new Set<string>();
+    const newActive = new Set<string>();
 
     for (const node of needed) {
       const key = this.chunkKey(node.faceIdx, node.depth, node.tx, node.ty);
       neededSet.add(key);
 
       if (this.cache.has(key)) {
-        // Update access time
         const entry = this.cache.get(key)!;
         entry.lastAccess = now;
-        if (entry.mesh.parent !== this.group) {
-          this.group.add(entry.mesh);
+        if (!entry.mesh.isEnabled()) {
+          entry.mesh.setEnabled(true);
         }
+        newActive.add(key);
       } else {
-        // Generate new chunk
         if (this.cache.size >= this.config.maxChunks) {
           this.evictOldest(neededSet);
         }
         const mesh = this.generateChunk(node.faceIdx, node.depth, node.tx, node.ty, R, heightAmp);
         if (mesh) {
+          mesh.setParent(this.root);
           this.cache.set(key, { mesh, lastAccess: now });
-          this.group.add(mesh);
+          newActive.add(key);
         }
       }
     }
 
-    // Remove chunks no longer needed
-    for (const [key, entry] of this.cache) {
-      if (!neededSet.has(key)) {
-        this.group.remove(entry.mesh);
+    // Hide chunks no longer needed
+    for (const key of this.activeMeshes) {
+      if (!newActive.has(key)) {
+        const entry = this.cache.get(key);
+        if (entry) entry.mesh.setEnabled(false);
       }
     }
+    this.activeMeshes = newActive;
   }
 
   private traverseFace(
@@ -273,16 +263,15 @@ export class LODPlanet {
     out: { faceIdx: number; depth: number; tx: number; ty: number }[]
   ): void {
     const R = this.config.planetRadius;
-    const size = 1 / (1 << depth); // uv size of this tile
+    const size = 1 / (1 << depth);
     const cu = (tx + 0.5) * size * 2 - 1;
     const cv = (ty + 0.5) * size * 2 - 1;
 
     const centerDir = uvToDir(faceIdx, cu, cv).normalize();
-    const surfacePos = _tmpVec.copy(centerDir).multiplyScalar(R);
-    const dist = cameraPos.distanceTo(surfacePos);
+    const surfacePos = _tmpVec.copyFrom(centerDir).scale(R);
+    const dist = Vector3.Distance(cameraPos, surfacePos);
     const chunkWorldSize = (2 * Math.PI * R) / (4 * (1 << depth));
 
-    // Determine if this node should split based on distance
     const shouldSplit = depth < maxDepth && dist < chunkWorldSize * 3;
 
     if (shouldSplit) {
@@ -310,7 +299,6 @@ export class LODPlanet {
     const verts = res + 1;
     const positions: number[] = [];
     const colors: number[] = [];
-    const pbrData: number[] = [];
     const indices: number[] = [];
     const normals: number[] = [];
 
@@ -328,11 +316,15 @@ export class LODPlanet {
         const u = u0 + i * du;
         const v = v0 + j * dv;
         const dir = uvToDir(faceIdx, u, v);
-        const samplePos = _tmpVec.copy(dir).multiplyScalar(R);
+        const samplePos = _tmpVec.copyFrom(dir).scale(R);
         const h = this.sampler.getHeight(samplePos.x, samplePos.y, samplePos.z);
         heightGrid[j][i] = h;
       }
     }
+
+    // Aggregate PBR for uniform material
+    let totalRoughness = 0;
+    let totalMetallic = 0;
 
     for (let j = 0; j < verts; j++) {
       for (let i = 0; i < verts; i++) {
@@ -342,10 +334,7 @@ export class LODPlanet {
 
         const dir = uvToDir(faceIdx, u, v).normalize();
         const altitude = h * heightAmp;
-        const px = dir.x * (R + altitude);
-        const py = dir.y * (R + altitude);
-        const pz = dir.z * (R + altitude);
-        positions.push(px, py, pz);
+        positions.push(dir.x * (R + altitude), dir.y * (R + altitude), dir.z * (R + altitude));
 
         // Normal via central differences
         const duv = 1 / res * step * 2;
@@ -357,7 +346,6 @@ export class LODPlanet {
         const dhdu = (hu1 - hu2) / (2 * duv);
         const dhdv = (hv1 - hv2) / (2 * duv);
 
-        // Perturb the surface direction by the height gradient
         const dirU = uvToDirTangent(faceIdx, u, v, 'u').normalize();
         const dirV = uvToDirTangent(faceIdx, u, v, 'v').normalize();
         const nx = dir.x - dhdu * dirU.x - dhdv * dirV.x;
@@ -370,21 +358,22 @@ export class LODPlanet {
           normals.push(dir.x, dir.y, dir.z);
         }
 
-        // Biome color with fractal domain warp
+        // Biome color with fractal domain warp (RGBA for Babylon.js)
         const warpOctaves = Math.min(6, depth + 2);
         const warp = this.sampler.getBiomeWarp(dir.x, dir.y, dir.z, warpOctaves);
         const warpedH = h + warp * this.config.biomeWarpAmplitude;
         const lat = Math.asin(Math.max(-1, Math.min(1, dir.y)));
         const [cr, cg, cb] = getBiomeColor(warpedH, lat);
-        colors.push(cr, cg, cb);
+        colors.push(cr, cg, cb, 1);
 
-        // Per-vertex roughness and metalness
+        // Aggregate PBR values for uniform material
         const [r, m] = getBiomePBR(warpedH, lat);
-        pbrData.push(r, m);
+        totalRoughness += r;
+        totalMetallic += m;
       }
     }
 
-    // Indices (triangle strip as triangles)
+    // Indices
     for (let j = 0; j < res; j++) {
       for (let i = 0; i < res; i++) {
         const a = j * verts + i;
@@ -392,63 +381,34 @@ export class LODPlanet {
         const c = (j + 1) * verts + i;
         const d = (j + 1) * verts + i + 1;
         if (FACE_WINDING_FLIP[faceIdx]) {
-          indices.push(a, c, b);
-          indices.push(c, d, b);
+          indices.push(a, c, b, c, d, b);
         } else {
-          indices.push(a, b, c);
-          indices.push(b, d, c);
+          indices.push(a, b, c, b, d, c);
         }
       }
     }
 
-    const geo = new BufferGeometry();
-    geo.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-    geo.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
-    geo.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
-    geo.setAttribute('pbr', new BufferAttribute(new Float32Array(pbrData), 2));
-    geo.setIndex(indices);
+    const vertexCount = verts * verts;
 
-    const mat = new MeshPhysicalMaterial({
-      vertexColors: true,
-      roughness: 0.7,
-      metalness: 0.1,
-      clearcoat: 0.04,
-    });
+    // Create Babylon.js mesh with VertexData
+    const mesh = new Mesh(`chunk-f${faceIdx}-d${depth}-${tx}-${ty}`, this.scene);
 
-    // Patch shader to use per-vertex roughness/metalness from pbr attribute
-    mat.onBeforeCompile = (shader) => {
-      // Vertex: add varying to pass pbr data to fragment
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <common>',
-        `#include <common>
-        attribute vec2 pbr;
-        varying vec2 vPbr;`
-      );
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <color_vertex>',
-        `#include <color_vertex>
-        vPbr = pbr;`
-      );
+    const vertexData = new VertexData();
+    vertexData.positions = new Float32Array(positions);
+    vertexData.normals = new Float32Array(normals);
+    vertexData.colors = new Float32Array(colors);
+    vertexData.indices = new Uint32Array(indices);
+    vertexData.applyToMesh(mesh, true);
 
-      // Fragment: use vPbr instead of uniform roughness/metalness
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <common>',
-        `#include <common>
-        varying vec2 vPbr;`
-      );
-      shader.fragmentShader = shader.fragmentShader.replace(
-        'float roughnessFactor = roughness;',
-        'float roughnessFactor = vPbr.x;'
-      );
-      shader.fragmentShader = shader.fragmentShader.replace(
-        'float metalnessFactor = metalness;',
-        'float metalnessFactor = vPbr.y;'
-      );
-    };
+    const mat = new PBRMaterial(`mat-${faceIdx}-${depth}-${tx}-${ty}`, this.scene);
+    mat.roughness = totalRoughness / vertexCount;
+    mat.metallic = totalMetallic / vertexCount;
+    mat.clearCoat.isEnabled = true;
+    mat.clearCoat.intensity = 0.04;
 
-    const mesh = new Mesh(geo, mat);
-    mesh.receiveShadow = true;
-    mesh.castShadow = depth >= 6;
+    mesh.material = mat;
+    mesh.receiveShadows = true;
+
     return mesh;
   }
 
@@ -463,10 +423,7 @@ export class LODPlanet {
     }
     if (oldestKey) {
       const entry = this.cache.get(oldestKey)!;
-      this.group.remove(entry.mesh);
-      entry.mesh.geometry.dispose();
-      const mat = entry.mesh.material;
-      if (!Array.isArray(mat)) mat.dispose();
+      entry.mesh.dispose();
       this.cache.delete(oldestKey);
     }
   }
@@ -477,19 +434,17 @@ export class LODPlanet {
 
   dispose(): void {
     for (const [, entry] of this.cache) {
-      this.group.remove(entry.mesh);
-      entry.mesh.geometry.dispose();
-      const mat = entry.mesh.material;
-      if (!Array.isArray(mat)) mat.dispose();
+      entry.mesh.dispose();
     }
     this.cache.clear();
+    this.activeMeshes.clear();
   }
 }
 
 function uvToDirTangent(faceIdx: number, u: number, v: number, dir: 'u' | 'v'): Vector3 {
   const eps = 0.001;
   if (dir === 'u') {
-    return uvToDir(faceIdx, u + eps, v).normalize().sub(uvToDir(faceIdx, u - eps, v).normalize());
+    return uvToDir(faceIdx, u + eps, v).normalize().subtract(uvToDir(faceIdx, u - eps, v).normalize());
   }
-  return uvToDir(faceIdx, u, v + eps).normalize().sub(uvToDir(faceIdx, u, v - eps).normalize());
+  return uvToDir(faceIdx, u, v + eps).normalize().subtract(uvToDir(faceIdx, u, v - eps).normalize());
 }
