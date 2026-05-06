@@ -31,6 +31,14 @@ class SceneManager {
 - `outputColorSpace = SRGBColorSpace`
 - `scene.background = #050510` — тёмный navy, не чёрный космос
 
+### Shadow Mapping
+- `shadowMap.enabled = true` с `PCFSoftShadowMap`
+- DirectionalLight: 2048×2048, bias -0.001, orthographic frustum ±200 km
+- Planet chunks: receiveShadow все, castShadow на depth ≥ 6 (только ближние)
+- Plane: cast + receive shadows
+- Sprite солнца: `depthTest: true` — не просвечивает сквозь планету
+- Atmosphere: не отбрасывает и не принимает тени (transparent BackSide)
+
 ### Edge Cases
 - Canvas нулевого размера → ресайз при старте
 - Окно меняет размер → слушатель `window.resize`, обновление камеры и рендерера
@@ -39,7 +47,7 @@ class SceneManager {
 - Большая сцена (радиус планеты 6371): WebGLRenderer включает logarithmicDepthBuffer
 - Дальняя плоскость камеры: 2000000 (для рендера солнечного диска на расстоянии 500000 km)
 
----
+
 
 ## 2. LODPlanet (`src/planet/`)
 
@@ -354,7 +362,7 @@ class Atmosphere {
 ## 5b. Sun (`src/atmosphere/Sun.ts`)
 
 ### Responsibility
-Солнечное освещение сцены. DirectionalLight + визуальный диск солнца.
+Солнечное освещение сцены. DirectionalLight + HemisphereLight + видимый диск солнца + shadow mapping.
 
 ### API
 
