@@ -1,4 +1,4 @@
-import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Matrix, Quaternion, Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
 import type { FlightState, ControlInput } from './types';
 
 const SPEED_STEPS = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
@@ -21,6 +21,7 @@ export class FlightModel {
   private _eulerOut = new Vector3();
   private _axis = new Vector3();
   private _fwdBase = new Vector3(0, 0, -1);
+  private _m1 = new Matrix();
 
   constructor(planetRadius = 6371, spawnPosition?: [number, number, number]) {
     this.planetRadius = planetRadius;
@@ -98,7 +99,8 @@ export class FlightModel {
 
     const speed = this.state.throttle * this.cruiseSpeed;
 
-    // Forward direction from orientation
+    // Forward direction from orientation (reset base each frame to avoid mutation)
+    this._fwdBase.set(0, 0, -1);
     const fwd = this._fwdBase.applyRotationQuaternion(this.quat);
 
     let [x, y, z] = this.state.position;
@@ -120,11 +122,30 @@ export class FlightModel {
     this.state.velocity = [fwd.x * speed, fwd.y * speed, fwd.z * speed];
   }
 
-  /** Align to surface: local Y → radial */
+  /** Align to surface: Y=up, -Z=tangent forward (no roll) */
   private alignToSurface(): void {
     const [x, y, z] = this.spawnPosition;
-    const radial = new Vector3(x, y, z).normalize();
-    Quaternion.FromUnitVectorsToRef(new Vector3(0, 1, 0), radial, this.quat);
+    const up = new Vector3(x, y, z).normalize();
+
+    // Tangent forward: project world (0,0,-1) onto the tangent plane
+    const tangentFwd = new Vector3(0, 0, -1);
+    const alongUp = Vector3.Dot(tangentFwd, up);
+    tangentFwd.subtractInPlace(up.scale(alongUp));
+    if (tangentFwd.lengthSquared() < 1e-10) {
+      tangentFwd.set(1, 0, 0); // fallback at poles
+    } else {
+      tangentFwd.normalize();
+    }
+
+    // Right = Up × Forward
+    const right = Vector3.Cross(up, tangentFwd).normalize();
+
+    // Build rotation matrix: X→right, Y→up, Z→-forward (so -Z → forward)
+    this._m1.setRow(0, new Vector4(right.x, up.x, -tangentFwd.x, 0));
+    this._m1.setRow(1, new Vector4(right.y, up.y, -tangentFwd.y, 0));
+    this._m1.setRow(2, new Vector4(right.z, up.z, -tangentFwd.z, 0));
+    this._m1.setRow(3, new Vector4(0, 0, 0, 1));
+    Quaternion.FromRotationMatrixToRef(this._m1, this.quat);
   }
 
   reset(): void {

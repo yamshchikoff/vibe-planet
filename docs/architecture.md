@@ -92,7 +92,7 @@ docs:  sync specs with actual implementation
 
 ## Module Responsibilities
 
-### Scene Manager (`src/scene/`) — IN PROGRESS (Babylon.js migration)
+### Scene Manager (`src/scene/`) — IMPLEMENTED
 - Инициализация Babylon.js Engine + Scene + Camera
 - Рендер-луп через engine.runRenderLoop с фиксацией dt
 - Подписка onUpdate для кастомных хуков
@@ -127,7 +127,7 @@ docs:  sync specs with actual implementation
 - Сброс всех клавиш при потере фокуса (blur)
 - Противоположные клавиши компенсируются (net sum = 0)
 
-### PlaneVisual (`src/plane/`) — IMPLEMENTED (porting to Babylon.js)
+### PlaneVisual (`src/plane/`) — IMPLEMENTED
 - Визуализация самолёта из MeshBuilder.CreateBox + PBRMaterial
 - Scale: 0.006 (истребитель 15 м × 9 м — F-16-class)
 - Позиционирование через update(position, yaw, pitch, roll)
@@ -178,14 +178,17 @@ planet/
 │   │   ├── HeightSampler.test.ts
 │   │   ├── LODPlanet.ts
 │   │   ├── LODPlanet.test.ts
-│   │   ├── PlanetGenerator.ts    # replaced by LODPlanet
-│   │   └── PlanetGenerator.test.ts
 │   ├── plane/
 │   │   ├── PlaneVisual.ts
 │   │   └── PlaneVisual.test.ts
 │   ├── atmosphere/
 │   │   ├── Atmosphere.ts
+│   │   ├── Atmosphere.test.ts
 │   │   ├── Sun.ts
+│   │   └── Sun.test.ts
+│   ├── camera/
+│   │   ├── ChaseCamera.ts
+│   │   └── ChaseCamera.test.ts
 │   ├── flight/
 │   │   ├── types.ts
 │   │   ├── FlightModel.ts
@@ -236,15 +239,16 @@ planet/
 
 | Модуль | Статус | Тесты |
 |--------|--------|-------|
-| SceneManager | ✅ | 12 |
-| PlanetGenerator | ❌ заменён | — |
+| SceneManager | ✅ | 10 |
 | FlightModel | ✅ | 20 |
 | KeyboardControls | ✅ | 10 |
-| LODPlanet | ✅ | 10 |
+| LODPlanet | ✅ | 13 (6+7 skip) |
 | HeightSampler | ✅ | 6 |
-| PlaneVisual | ✅ | 5 |
-| Atmosphere | ✅ | 16 |
-| Sun | ✅ | 13 |
+| PlaneVisual | ✅ | 4 |
+| Atmosphere | ✅ | 6 |
+| Sun | ✅ | 15 (7+8 skip) |
+| ChaseCamera | ✅ | 5 |
+| main | ✅ | 3 |
 | GamepadControls | 📋 план | — |
 
 ## Edge Cases

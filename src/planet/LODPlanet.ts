@@ -1,6 +1,5 @@
 import {
   Mesh,
-  MeshBuilder,
   VertexData,
   PBRMaterial,
   TransformNode,
@@ -28,8 +27,6 @@ const DEFAULTS: Required<LODConfig> = {
   chunkResolution: 16,
   biomeWarpAmplitude: 0.035,
 };
-
-const AXES = ['x', 'y', 'z'] as const;
 
 const FACES: { axis: number; sign: number }[] = [
   { axis: 0, sign: 1 },
@@ -65,8 +62,9 @@ function uvToDir(faceIdx: number, u: number, v: number): Vector3 {
   const out = new Vector3();
   for (let i = 0; i < 3; i++) {
     const val = i === axis ? sign : coords[ci++];
-    const key = AXES[i];
-    (out as Record<string, number>)[key] = val;
+    if (i === 0) out.x = val;
+    else if (i === 1) out.y = val;
+    else out.z = val;
   }
   return out;
 }
@@ -406,6 +404,7 @@ export class LODPlanet {
     mat.clearCoat.isEnabled = true;
     mat.clearCoat.intensity = 0.04;
 
+    mat.useVertexColor = true;
     mesh.material = mat;
     mesh.receiveShadows = true;
 

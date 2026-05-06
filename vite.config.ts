@@ -6,4 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
   },
+  optimizeDeps: {
+    exclude: ['@babylonjs/core'],
+  },
 });

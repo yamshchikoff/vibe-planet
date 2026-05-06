@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { FlightModel } from './FlightModel';
-import { Vector3, Quaternion } from '@babylonjs/core/Maths/math.vector';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 const SPEED_CRUISE = 2.0;
 
@@ -98,12 +98,12 @@ describe('FlightModel', () => {
     });
 
     it('moves backward with negative throttle', () => {
-      const [x0, y0, z0] = flight.getState().position;
+      const [, , z0] = flight.getState().position;
       for (let i = 0; i < 30; i++) {
         flight.applyControls({ pitch: 0, yaw: 0, roll: 0, throttle: -1 });
         flight.update(1 / 60);
       }
-      const [x1, y1, z1] = flight.getState().position;
+      const [, , z1] = flight.getState().position;
       // Forward is -Z, backward is +Z
       expect(z1).toBeGreaterThan(z0);
     });
