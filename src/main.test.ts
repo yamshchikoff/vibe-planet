@@ -27,11 +27,9 @@ import { PlaneVisual } from './plane/PlaneVisual';
 describe('Camera follow', () => {
   it('copies plane quaternion — camera orientation matches plane', () => {
     const pv = new PlaneVisual(mockScene as any);
-    pv.update([0, 0, 0], 0, 0, Math.PI / 4); // 45° roll
-
-    const q = Quaternion.FromEulerAngles(0, 0, Math.PI / 4);
-    expect(q.z).not.toBe(0);
-    expect(Math.abs(q.z)).toBeGreaterThan(0);
+    const q = Quaternion.FromEulerAngles(0, 0, Math.PI / 4); // 45° roll
+    pv.update([0, 0, 0], q);
+    expect(pv.getMesh().rotationQuaternion).toBe(q);
     pv.dispose();
   });
 

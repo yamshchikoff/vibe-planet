@@ -234,6 +234,60 @@ describe('FlightModel', () => {
     });
   });
 
+  describe('body-frame invariant', () => {
+    it('pitch around body Y keeps body Y direction constant in world frame', () => {
+      const initial = new Vector3(0, 1, 0).applyRotationQuaternion(flight.getQuaternion());
+      for (let i = 0; i < 200; i++) {
+        flight.applyControls({ pitch: 1, yaw: 0, roll: 0, throttle: 0 });
+      }
+      const current = new Vector3(0, 1, 0).applyRotationQuaternion(flight.getQuaternion());
+      const dot = Math.min(1, Math.max(-1, Vector3.Dot(initial, current)));
+      expect(dot).toBeCloseTo(1, 6);
+    });
+
+    it('yaw around body Z keeps body Z direction constant in world frame', () => {
+      const initial = new Vector3(0, 0, 1).applyRotationQuaternion(flight.getQuaternion());
+      for (let i = 0; i < 200; i++) {
+        flight.applyControls({ pitch: 0, yaw: 1, roll: 0, throttle: 0 });
+      }
+      const current = new Vector3(0, 0, 1).applyRotationQuaternion(flight.getQuaternion());
+      const dot = Math.min(1, Math.max(-1, Vector3.Dot(initial, current)));
+      expect(dot).toBeCloseTo(1, 6);
+    });
+
+    it('roll around body X keeps body X direction constant in world frame', () => {
+      const initial = new Vector3(1, 0, 0).applyRotationQuaternion(flight.getQuaternion());
+      for (let i = 0; i < 200; i++) {
+        flight.applyControls({ pitch: 0, yaw: 0, roll: 1, throttle: 0 });
+      }
+      const current = new Vector3(1, 0, 0).applyRotationQuaternion(flight.getQuaternion());
+      const dot = Math.min(1, Math.max(-1, Vector3.Dot(initial, current)));
+      expect(dot).toBeCloseTo(1, 6);
+    });
+
+    it('pitch does not change body X direction', () => {
+      const initial = new Vector3(1, 0, 0).applyRotationQuaternion(flight.getQuaternion());
+      for (let i = 0; i < 200; i++) {
+        flight.applyControls({ pitch: 1, yaw: 0, roll: 0, throttle: 0 });
+      }
+      const current = new Vector3(1, 0, 0).applyRotationQuaternion(flight.getQuaternion());
+      const dot = Math.min(1, Math.max(-1, Vector3.Dot(initial, current)));
+      // Pure pitch rotates X around Y — X direction changes!
+      expect(dot).toBeLessThan(0.9999);
+    });
+
+    it('pitch does not change body Z direction', () => {
+      const initial = new Vector3(0, 0, 1).applyRotationQuaternion(flight.getQuaternion());
+      for (let i = 0; i < 200; i++) {
+        flight.applyControls({ pitch: 1, yaw: 0, roll: 0, throttle: 0 });
+      }
+      const current = new Vector3(0, 0, 1).applyRotationQuaternion(flight.getQuaternion());
+      const dot = Math.min(1, Math.max(-1, Vector3.Dot(initial, current)));
+      // Pure pitch rotates Z around Y — Z direction changes!
+      expect(dot).toBeLessThan(0.9999);
+    });
+  });
+
   describe('state reset', () => {
     it('resets to initial state', () => {
       for (let i = 0; i < 60; i++) {

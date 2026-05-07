@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Quaternion } from '@babylonjs/core/Maths/math.vector';
 import { PlaneVisual } from './PlaneVisual';
 
 let uniqueId = 0;
@@ -31,19 +32,19 @@ describe('PlaneVisual', () => {
 
   it('update changes group position', () => {
     const pv = new PlaneVisual(mockScene as any);
-    pv.update([10, 20, 30], 0, 0, 0);
+    pv.update([10, 20, 30], new Quaternion());
     expect(pv.getMesh().position.x).toBe(10);
     expect(pv.getMesh().position.y).toBe(20);
     expect(pv.getMesh().position.z).toBe(30);
     pv.dispose();
   });
 
-  it('update changes group rotation', () => {
+  it('update stores rotation quaternion', () => {
     const pv = new PlaneVisual(mockScene as any);
-    pv.update([0, 0, 0], 1, 0.5, 0.3);
-    expect(pv.getMesh().rotation.y).toBe(1);
-    expect(pv.getMesh().rotation.x).toBe(0.5);
-    expect(pv.getMesh().rotation.z).toBe(0.3);
+    const q = new Quaternion(0.707, 0, 0.707, 0);
+    pv.update([0, 0, 0], q);
+    expect(pv.getMesh().rotationQuaternion).toBe(q);
+    expect(pv.getMesh().rotationQuaternion!.x).toBe(0.707);
     pv.dispose();
   });
 
