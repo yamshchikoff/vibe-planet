@@ -1,6 +1,13 @@
-# QEMU Full-Emulation Dev Server
+# QEMU Full-Emulation Dev Server (Full Loop)
 
-The planet app runs inside an **Alpine Linux 3.20** QEMU VM with **TCG full emulation** (no KVM). This provides a reproducible, isolated environment.
+The planet app runs inside an **Alpine Linux 3.20** QEMU VM with **TCG full emulation** (no KVM). This provides a **deterministic, hermetic** environment — the full debug loop.
+
+**У нас два цикла отладки:**
+- **Быстрый цикл (host):** `npm run dev` — Vite dev server на хосте, HMR, для итераций кода
+- **Полный цикл (QEMU VM):** этот документ — build + QEMU + deploy, для детерминизма
+
+Финальная проверка перед коммитом всегда в полном цикле. 95% разработки — в быстром цикле на хосте.
+Подробнее о выборе цикла — в `CLAUDE.md`.
 
 ## Quick Start
 

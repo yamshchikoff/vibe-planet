@@ -17,7 +17,7 @@ All implementation must be checked for compliance with the MIT License terms bef
 2. **Тесты** — написать `*.test.ts`, убедиться что падают (RED)
 3. **Реализация** — написать код, проходящий тесты (GREEN)
 4. **Синк документации** — перечитать `docs/`, проверить консистентность с кодом и тестами; если docs отстают — обновить
-5. **Визуальная проверка** — `npm run dev`, проверить в браузере
+5. **Визуальная проверка** — быстрый цикл (`npm run dev`, host) или полный цикл (QEMU VM); см. `CLAUDE.md` → Debug Loops
 
 ### Commits — строгие категории
 
@@ -55,9 +55,14 @@ docs:  sync specs with actual implementation
 
 ## Running
 
-- **Dev**: `npm run dev` — Vite on `0.0.0.0:8080`
-- **Build**: `npm run build` → `dist/` with production bundle
-- **QEMU VM**: `docs/qemu-vm.md` — full virtualization (TCG), no KVM. Boots Alpine Linux, serves `dist/` on port 8080.
+У нас два цикла отладки:
+
+| Цикл | Команда | Назначение |
+|------|---------|-----------|
+| **Быстрый (host)** | `npm run dev` → http://localhost:8080/ | Итерация кода, HMR, 95% разработки |
+| **Полный (QEMU VM)** | `npm run build` → boot VM → deploy | Детерминизм, герметичность, финальная проверка |
+
+Подробные инструкции по обоим циклам — в `CLAUDE.md` → Debug Loops.
 
 ## Technology Stack
 

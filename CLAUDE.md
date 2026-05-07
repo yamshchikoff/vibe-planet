@@ -59,49 +59,59 @@ Procedural planet generator + flight simulator. Браузерное прило�
 - `npm test -- --watch` — вотчер
 - `npm run build` — production-сборка
 
-## Dev Server (всегда в QEMU VM)
+## Debug Loops
 
-**Важно:** "поднять сервер", "запустить сервер", "посмотреть в браузере" — всегда означает:
-1. Забилдить проект
-2. Запаковать в tarball
-3. Запустить QEMU VM
-4. Закинуть tarball внутрь VM через SSH и запустить HTTP сервер
-5. Приложение доступно на `http://79.139.138.87:8080/`
+У нас **два цикла отладки**: быстрый (на хосте) и полный (в QEMU VM).
 
-### Полный цикл
+| Цикл | Команда | Время | Когда использовать |
+|------|---------|-------|-------------------|
+| **Быстрый** | `npm run dev` | ~1 с | Во время активной разработки, для быстрой итерации кода |
+| **Полный** | build → QEMU → deploy | ~90 с | Финальная проверка перед коммитом; при изменениях в конфиге сборки, путях, зависимостях; когда нужно гарантировать детерминизм и герметичность |
+
+### Быстрый цикл (host)
+
+```bash
+npm run dev
+# → http://localhost:8080/ (Vite dev server на хосте, HMR)
+```
+
+Для быстрой итерации: меняешь код → HMR обновляет страницу. **Не гарантирует** детерминизма — среда хоста может отличаться от VM. Подходит для 95% разработки.
+
+### Полный цикл (QEMU VM)
+
+Для детерминизма и герметичности. Приложение собирается в production-бандл и подаётся через HTTP-сервер внутри Alpine Linux VM (TCG full emulation, без KVM).
 
 ```bash
 # 1. Build
 npm run build
 
-# 2. Package tarball
-tar czf /home/agent/qemu-vm/planet.tgz dist/
-
-# 3. Boot VM (ждём 60-80с)
+# 2. Boot VM (ждём 60–80 с)
 ./scripts/boot-vm.sh
 
-# 4. В другом терминале: залить tarball и запустить сервер
-ssh root@localhost -p 2222 "cd /opt && tar xzf planet.tgz && nohup python3 -m http.server 8080 --directory dist/ &"
+# 3. Package + upload + serve (в одну строку)
+tar czf /tmp/planet.tgz dist/ && \
+  scp -P 2222 /tmp/planet.tgz root@localhost:/opt/ && \
+  ssh -f root@localhost -p 2222 "nohup python3 -m http.server 8080 --directory /opt/dist/ > /dev/null 2>&1"
 
-# 5. Открыть: http://79.139.138.87:8080/
+# 4. Открыть: http://79.139.138.87:8080/
 ```
 
-### После изменений (быстрый редеплой)
+### Быстрый редеплой в VM (после изменений, VM уже запущена)
 
 ```bash
-npm run build && tar czf /home/agent/qemu-vm/planet.tgz dist/ && \
-  scp -P 2222 /home/agent/qemu-vm/planet.tgz root@localhost:/opt/ && \
-  ssh root@localhost -p 2222 "cd /opt && tar xzf planet.tgz && pkill -f http.server; nohup python3 -m http.server 8080 --directory dist/ &"
+npm run build && tar czf /tmp/planet.tgz dist/ && \
+  scp -P 2222 /tmp/planet.tgz root@localhost:/opt/ && \
+  ssh -f root@localhost -p 2222 "nohup python3 -m http.server 8080 --directory /opt/dist/ > /dev/null 2>&1"
 ```
 
 ### Серия и порты
 
 | Назначение | Адрес |
 |-----------|-------|
-| Приложение | `http://79.139.138.87:8080/` |
+| Приложение (host, fast loop) | `http://localhost:8080/` |
+| Приложение (VM, full loop) | `http://79.139.138.87:8080/` |
 | SSH в VM | `ssh root@localhost -p 2222` |
-| Внутренний IP хоста | `192.168.181.128` |
-| Локальный хост | `localhost:8080` (проброшен в VM) |
+| Локальный хост для проброса | `localhost:8080` (занят VM в полном цикле) |
 
 ## Module Map
 
