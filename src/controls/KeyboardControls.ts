@@ -20,10 +20,10 @@ const KEY_SIGN: Record<string, number> = {
   KeyD: -1,
   KeyQ: 1,
   KeyE: -1,
-  ShiftLeft: 1,
-  ShiftRight: 1,
-  ControlLeft: -1,
-  ControlRight: -1,
+  ShiftLeft: -1,
+  ShiftRight: -1,
+  ControlLeft: 1,
+  ControlRight: 1,
 };
 
 export class KeyboardControls {
