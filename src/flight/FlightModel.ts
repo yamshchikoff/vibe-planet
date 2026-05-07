@@ -137,8 +137,8 @@ export class FlightModel {
       tangentFwd.normalize();
     }
 
-    // Right = Up × Forward
-    const right = Vector3.Cross(up, tangentFwd).normalize();
+    // Right = Forward × Up (right-handed: det = +1)
+    const right = Vector3.Cross(tangentFwd, up).normalize();
 
     // Build rotation matrix: X→right, Y→up, Z→-forward (so -Z → forward)
     this._m1.setRow(0, new Vector4(right.x, up.x, -tangentFwd.x, 0));
@@ -146,6 +146,7 @@ export class FlightModel {
     this._m1.setRow(2, new Vector4(right.z, up.z, -tangentFwd.z, 0));
     this._m1.setRow(3, new Vector4(0, 0, 0, 1));
     Quaternion.FromRotationMatrixToRef(this._m1, this.quat);
+    this.quat.normalize();
   }
 
   reset(): void {

@@ -5,7 +5,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { Texture } from '@babylonjs/core/Materials/Textures/texture';
+import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import type { Scene } from '@babylonjs/core/scene';
 
 export interface SunConfig {
@@ -41,30 +41,21 @@ export class Sun {
     disc.billboardMode = Mesh.BILLBOARDMODE_ALL;
     disc.scaling.set(12000, 12000, 1);
 
-    // Procedural gradient texture via canvas
     const size = 256;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-      gradient.addColorStop(0, 'rgba(255, 255, 230, 1)');
-      gradient.addColorStop(0.08, 'rgba(255, 240, 180, 1)');
-      gradient.addColorStop(0.25, 'rgba(255, 200, 80, 0.9)');
-      gradient.addColorStop(0.5, 'rgba(255, 150, 30, 0.4)');
-      gradient.addColorStop(0.75, 'rgba(255, 100, 0, 0.1)');
-      gradient.addColorStop(1, 'rgba(255, 60, 0, 0)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, size, size);
-    }
-
-    const texture = Texture.LoadFromDataString(
-      'data:image/png;base64,',
-      canvas.toDataURL(),
-      scene
-    );
+    const texture = new DynamicTexture('sunDisc', { width: size, height: size }, scene, false);
     texture.hasAlpha = true;
+
+    const ctx = texture.getContext();
+    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, 'rgba(255, 255, 230, 1)');
+    gradient.addColorStop(0.08, 'rgba(255, 240, 180, 1)');
+    gradient.addColorStop(0.25, 'rgba(255, 200, 80, 0.9)');
+    gradient.addColorStop(0.5, 'rgba(255, 150, 30, 0.4)');
+    gradient.addColorStop(0.75, 'rgba(255, 100, 0, 0.1)');
+    gradient.addColorStop(1, 'rgba(255, 60, 0, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    texture.update();
 
     const mat = new StandardMaterial('sunDiscMat', scene);
     mat.opacityTexture = texture;

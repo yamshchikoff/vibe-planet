@@ -46,6 +46,8 @@ const FACE_NORMALS = [
   new Vector3(0, 0, -1),
 ];
 
+// Faces 3 (-Y) and 4 (+Z) produce CW winding with the default vertex grid.
+// Flipping the triangle indices corrects the winding for face culling.
 const FACE_WINDING_FLIP = [false, true, true, false, false, true];
 
 const _tmpVec = new Vector3();

@@ -17,7 +17,7 @@ export class SceneManager {
   private updateCallbacks: UpdateCallback[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
-    this.engine = new Engine(canvas, true);
+    this.engine = new Engine(canvas, true, { preserveDrawingBuffer: true });
 
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.02, 0.02, 0.06, 1); // #050510
@@ -28,6 +28,10 @@ export class SceneManager {
     this.camera.maxZ = 2000000;
 
     this.worldGroup = new TransformNode('worldGroup', this.scene);
+
+    // Non-zero reference point: without it, _currentTarget = position after
+    // floating origin reset, and LookAtLH gets an undefined zero direction.
+    (this.camera as any)._referencePoint = new Vector3(0, 0, 1000);
 
     this.resize();
     window.addEventListener('resize', this.resize);

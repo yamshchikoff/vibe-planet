@@ -1,7 +1,6 @@
 import './style.css';
 import { SceneManager } from './scene/SceneManager';
 import { LODPlanet } from './planet/LODPlanet';
-import { Atmosphere } from './atmosphere/Atmosphere';
 import { Sun } from './atmosphere/Sun';
 import { FlightModel } from './flight/FlightModel';
 import { KeyboardControls } from './controls/KeyboardControls';
@@ -52,12 +51,6 @@ const planet = new LODPlanet({
   chunkResolution: 16,
 }, bjsScene);
 planet.getRoot().parent = worldGroup;
-// Atmosphere — shader-based scattering shell
-const atmosphere = new Atmosphere({
-  planetRadius: 6371,
-  atmosphereHeight: 80,
-}, bjsScene);
-atmosphere.getMesh().parent = worldGroup;
 // Flight model + controls — spawn above highest mountain (seed 91, lat=20°, lon=0°, 6.64 km)
 const MOUNTAIN_POS: [number, number, number] = [5993.87, 2181.71, 0];
 const flight = new FlightModel(6371, MOUNTAIN_POS);
@@ -72,12 +65,14 @@ cam.fov = 70 * Math.PI / 180;
 cam.minZ = 0.001;
 // Chase camera
 const chaseCamera = new ChaseCamera(cam, {
-  offset: [0, 0.006, 0.015],
+  offset: [0, 0.5, 2],
   lerpSpeed: 0.3,
 });
 // Game loop
 const _quat = new Quaternion();
 let frameCount = 0;
+// Debug globals
+(window as any).__debug = { scene, planet, sun, chaseCamera, flight, cam, bjsScene };
 scene.onUpdate((dt) => {
   frameCount++;
   if (frameCount === 1) showInfo(`Render loop started ✓`);
@@ -94,11 +89,10 @@ scene.onUpdate((dt) => {
   plane.update([px, py, pz], yaw, pitch, roll);
   // Chase camera — smooth follow behind/above plane
   Quaternion.FromEulerAnglesToRef(pitch, yaw, roll, _quat);
-  chaseCamera.update(new Vector3(px, py, pz), _quat, dt);
+  chaseCamera.update(new Vector3(px, py, pz), _quat, dt, new Vector3(0, -1, 0));
   // LOD updates use actual camera position
   const chunksBefore = planet['activeMeshes']?.size ?? 0;
   planet.update(cam.position);
-  atmosphere.update(cam.position, sun.getDirection());
   const chunksAfter = planet['activeMeshes']?.size ?? 0;
   if (frameCount <= 3) {
     showInfo(`Frame ${frameCount}: cam=(${cam.position.x.toFixed(1)}, ${cam.position.y.toFixed(1)}, ${cam.position.z.toFixed(3)}) chunks=${chunksBefore}->${chunksAfter}`);
@@ -109,9 +103,6 @@ const overlay = document.getElementById('controls-help');
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyH' && overlay) {
     overlay.classList.toggle('visible');
-  }
-  if (e.code === 'KeyU') {
-    atmosphere.getMesh().setEnabled(!atmosphere.getMesh().isEnabled());
   }
   if (e.code === 'KeyT') {
     debug.nextPattern();
