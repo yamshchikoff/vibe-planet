@@ -31,7 +31,7 @@ export class SceneManager {
 
     // Non-zero reference point: without it, _currentTarget = position after
     // floating origin reset, and LookAtLH gets an undefined zero direction.
-    (this.camera as any)._referencePoint = new Vector3(0, 0, 1000);
+    (this.camera as any)._useRotationForTarget = true;
 
     this.resize();
     window.addEventListener('resize', this.resize);
