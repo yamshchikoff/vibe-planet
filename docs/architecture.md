@@ -55,14 +55,17 @@ docs:  sync specs with actual implementation
 
 ## Running
 
-У нас два цикла отладки:
+У нас три среды отладки:
 
-| Цикл | Команда | Назначение |
-|------|---------|-----------|
-| **Быстрый (host)** | `npm run dev` → http://localhost:8080/ | Итерация кода, HMR, 95% разработки |
-| **Полный (QEMU VM)** | `npm run build` → boot VM → deploy | Детерминизм, герметичность, финальная проверка |
+| Среда | Команда | Назначение |
+|-------|---------|-----------|
+| **Host (fast loop)** | `npm run dev` → http://localhost:8080/ | Итерация кода, HMR, 95% разработки |
+| **Dev VM (Ubuntu Desktop)** | Chrome на 192.168.181.129 | Визуальная проверка, скриншоты через CDP |
+| **Deploy VM (QEMU Alpine)** | `npm run build` → boot → deploy | Детерминизм, герметичность, финальная проверка |
 
-Подробные инструкции по обоим циклам — в `CLAUDE.md` → Debug Loops.
+**Dev VM доступ:** SSH `claude@192.168.181.129` (ключ). Chrome remote debugging на порту 9222,
+SSH tunnel `-L 9222:localhost:9222`. CDP скриншоты через `Page.captureScreenshot`.
+Подробности — в `CLAUDE.md` → Dev VM.
 
 ## Technology Stack
 
@@ -94,8 +97,7 @@ docs:  sync specs with actual implementation
 │  │  │  PlaneVisual                   │  │  │
 │  │  └────────────────────────────────┘  │  │
 │  │  ┌────────────────────────────────┐  │  │
-│  │  │  Atmosphere + Sun              │  │  │
-│  │  │  (shader scattering)           │  │  │
+│  │  │  Sun (lighting + sun disc)     │  │  │
 │  │  └────────────────────────────────┘  │  │
 │  └────────────────────────────────────┘  │
 └─────────────────────────────────────────┘
@@ -144,11 +146,10 @@ docs:  sync specs with actual implementation
 - Позиционирование через update(position, yaw, pitch, roll)
 - Шесть частей: фюзеляж, нос, кабина, крылья, хвостовые стабилизаторы, киль
 
-### Atmosphere (`src/atmosphere/`) — IMPLEMENTED
-- **Scattering**: шейдерный атмосферный скейтеринг (BackSide сфера, rim lighting + sun angle)
-- **Parameters**: planetRadius 6371, atmosphereHeight 80 km
-- **Прозрачность**: затухание от поверхности до края атмосферы
-- **Интеграция**: получает направление солнца из Sun, обновляется каждый кадр
+### Atmosphere (`src/atmosphere/`) — DEFERRED
+- Атмосферный скейтеринг будет реализован в последнюю очередь, после ландшафта и освещения
+- План: шейдерный скейтеринг (BackSide сфера, rim lighting + sun angle)
+- Parameters: planetRadius 6371, atmosphereHeight 80 km
 
 ### Sun (`src/atmosphere/`) — IMPLEMENTED
 - DirectionalLight + AmbientLight с дневным/ночным циклом
@@ -164,7 +165,6 @@ User Input → KeyboardControls → FlightModel → position/orientation
                                           PlaneVisual.update(pos, yaw, pitch, roll)
                                                          ↓
 SceneManager.onUpdate → camera follow → LODPlanet.update(cameraPos)
-                                           Atmosphere.update(cameraPos, sunDir)
                                            Sun.update(dt)
                                                          ↓
                                     Floating origin → WebGLRenderer.render
@@ -193,8 +193,6 @@ planet/
 │   │   ├── PlaneVisual.ts
 │   │   └── PlaneVisual.test.ts
 │   ├── atmosphere/
-│   │   ├── Atmosphere.ts
-│   │   ├── Atmosphere.test.ts
 │   │   ├── Sun.ts
 │   │   └── Sun.test.ts
 │   ├── camera/
@@ -221,8 +219,9 @@ planet/
 4. Update camera (15 м позади, 6 м выше самолёта, lookAt на самолёт, FOV 85°)
 5. Floating origin: worldGroup.position = -camera.position, затем camera.position = (0, 0, 0).  
    Babylon.js TransformNode задаёт смещение worldGroup, объекты рендерятся в локальной системе координат.
-6. Update Atmosphere + Sun uniforms
-7. Render planet chunks → atmosphere → (в перспективе clouds)
+6. Update Sun uniforms
+7. Render planet chunks → sun disc
+   (атмосфера отложена — будет добавлена после ландшафта и освещения)
 
 ### Camera
 
@@ -256,7 +255,7 @@ planet/
 | LODPlanet | ✅ | 13 (6+7 skip) |
 | HeightSampler | ✅ | 6 |
 | PlaneVisual | ✅ | 4 |
-| Atmosphere | ✅ | 6 |
+| Atmosphere | ⏳ отложено | — |
 | Sun | ✅ | 15 (7+8 skip) |
 | ChaseCamera | ✅ | 5 |
 | main | ✅ | 3 |

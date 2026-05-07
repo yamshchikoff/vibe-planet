@@ -323,7 +323,9 @@ class KeyboardControls {
 
 ---
 
-## 5. Atmosphere (`src/atmosphere/`)
+## 5. Atmosphere (`src/atmosphere/`) — DEFERRED
+
+**Реализация отложена до завершения ландшафта и освещения.**
 
 ### Responsibility
 Атмосферное рассеяние (shader-based), скайбокс, облачный слой.

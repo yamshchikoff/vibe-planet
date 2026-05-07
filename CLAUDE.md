@@ -59,27 +59,71 @@ Procedural planet generator + flight simulator. Браузерное прило�
 - `npm test -- --watch` — вотчер
 - `npm run build` — production-сборка
 
-## Debug Loops
+## Debug Infrastructure
 
-У нас **два цикла отладки**: быстрый (на хосте) и полный (в QEMU VM).
+У нас **три среды** разработки и отладки:
 
-| Цикл | Команда | Время | Когда использовать |
-|------|---------|-------|-------------------|
-| **Быстрый** | `npm run dev` | ~1 с | Во время активной разработки, для быстрой итерации кода |
-| **Полный** | build → QEMU → deploy | ~90 с | Финальная проверка перед коммитом; при изменениях в конфиге сборки, путях, зависимостях; когда нужно гарантировать детерминизм и герметичность |
+| Среда | Команда | Назначение |
+|-------|---------|------------|
+| **Host (fast loop)** | `npm run dev` → http://localhost:8080/ | Активная разработка, HMR, 95% времени |
+| **Dev VM** (Ubuntu Desktop) | Браузер на 192.168.181.129 | Визуальная проверка, скриншоты, console errors |
+| **Deploy VM** (QEMU Alpine) | `npm run build` + deploy | Финальная проверка перед коммитом, детерминизм |
 
-### Быстрый цикл (host)
+### Host — быстрый цикл
 
 ```bash
 npm run dev
-# → http://localhost:8080/ (Vite dev server на хосте, HMR)
+# → http://localhost:8080/ (Vite dev server, HMR)
 ```
 
-Для быстрой итерации: меняешь код → HMR обновляет страницу. **Не гарантирует** детерминизма — среда хоста может отличаться от VM. Подходит для 95% разработки.
+Для быстрой итерации: меняешь код → HMR обновляет страницу.
 
-### Полный цикл (QEMU VM)
+### Dev VM (Ubuntu Desktop 26.04)
 
-Для детерминизма и герметичности. Приложение собирается в production-бандл и подаётся через HTTP-сервер внутри Alpine Linux VM (TCG full emulation, без KVM).
+Изолированная VMware虚拟机 с Ubuntu Desktop и Chrome для визуальной отладки.
+Используется для скриншотов и проверки console errors в реальном браузере.
+
+**Доступ:**
+- **IP**: 192.168.181.129, пользователь: claude
+- **SSH**: `ssh claude@192.168.181.129` (ключ, пароль не используется)
+- **Пароль sudo**: хранится отдельно, в git не попадает
+
+**Chrome remote debugging (для скриншотов через CDP):**
+
+С Chrome на dev VM можно взаимодействовать программно через Chrome DevTools Protocol.
+Это позволяет делать скриншоты и инспектировать JS-состояние без GUI.
+
+```bash
+# На dev VM — запустить Xvfb (если не запущен):
+ssh claude@192.168.181.129 'pgrep -a Xvfb || (Xvfb :99 -screen 0 1920x1080x24 &>/dev/null & disown)'
+
+# На dev VM — запустить Chrome с remote debugging:
+ssh claude@192.168.181.129 "DISPLAY=:99 nohup google-chrome-stable --no-sandbox --disable-gpu --enable-unsafe-swiftshader --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-dev --new-window http://192.168.181.128:8080/ &>/tmp/chrome.log & disown"
+
+# На host — forward порта:
+ssh -f -N -L 9222:localhost:9222 claude@192.168.181.129
+
+# Screenshot + console через CDP:
+curl -s http://localhost:9222/json  # список страниц
+# Для capture:
+#   cd /tmp && npm init -y && npm install ws
+#   node -e '...WebSocket...Page.captureScreenshot...Page.navigate...Runtime.evaluate...'
+```
+
+**CDP workflow:**
+1. `Target.attachToTarget` — привязаться к странице (flatten: true)
+2. `Page.navigate` — загрузить URL
+3. `Runtime.evaluate` — выполнить JS, получить состояние
+4. `Page.captureScreenshot` — PNG base64
+
+**На host установлено:** Node.js, npm, ws-модуль в /tmp/node_modules/ws
+
+### Deploy VM (QEMU Alpine, TCG full emulation)
+
+Для детерминизма и герметичности. Приложение собирается в production-бандл и подаётся через HTTP-сервер внутри Alpine Linux VM.
+
+**ВНИМАНИЕ**: Deploy VM используется только для финальной проверки production-сборки.
+Не используется для активной разработки.
 
 ```bash
 # 1. Build
@@ -88,7 +132,7 @@ npm run build
 # 2. Boot VM (ждём 60–80 с)
 ./scripts/boot-vm.sh
 
-# 3. Package + upload + serve (в одну строку)
+# 3. Package + upload + serve
 tar czf /tmp/planet.tgz dist/ && \
   scp -P 2222 /tmp/planet.tgz root@localhost:/opt/ && \
   ssh -f root@localhost -p 2222 "nohup python3 -m http.server 8080 --directory /opt/dist/ > /dev/null 2>&1"
@@ -96,22 +140,14 @@ tar czf /tmp/planet.tgz dist/ && \
 # 4. Открыть: http://79.139.138.87:8080/
 ```
 
-### Быстрый редеплой в VM (после изменений, VM уже запущена)
-
-```bash
-npm run build && tar czf /tmp/planet.tgz dist/ && \
-  scp -P 2222 /tmp/planet.tgz root@localhost:/opt/ && \
-  ssh -f root@localhost -p 2222 "nohup python3 -m http.server 8080 --directory /opt/dist/ > /dev/null 2>&1"
-```
-
-### Серия и порты
+### Портовая схема
 
 | Назначение | Адрес |
 |-----------|-------|
-| Приложение (host, fast loop) | `http://localhost:8080/` |
-| Приложение (VM, full loop) | `http://79.139.138.87:8080/` |
-| SSH в VM | `ssh root@localhost -p 2222` |
-| Локальный хост для проброса | `localhost:8080` (занят VM в полном цикле) |
+| Vite dev server (host) | `http://localhost:8080/` |
+| Dev VM (Chrome) | `http://192.168.181.128:8080/` |
+| Deploy VM (QEMU, production) | `http://79.139.138.87:8080/` |
+| SSH в Deploy VM | `ssh root@localhost -p 2222` |
 
 ## Module Map
 
@@ -120,5 +156,5 @@ src/scene/      — SceneManager (Three.js setup, render loop)
 src/planet/     — PlanetGenerator (procedural mesh, shaders)
 src/flight/     — FlightModel (physics, state)
 src/controls/   — KeyboardControls, GamepadControls (input)
-src/atmosphere/ — sky shader, clouds
+src/atmosphere/ — отложено (атмосфера после ландшафта и освещения), Sun.ts (day/night cycle)
 ```
