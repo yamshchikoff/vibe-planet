@@ -1,6 +1,6 @@
 # Planet
 
-Procedural planet generator + flight simulator. Браузерное приложение на Three.js.
+Procedural planet generator + flight simulator. Браузерное приложение на Babylon.js.
 
 ## Development Protocol (строгий)
 
@@ -152,9 +152,19 @@ tar czf /tmp/planet.tgz dist/ && \
 ## Module Map
 
 ```
-src/scene/      — SceneManager (Three.js setup, render loop)
-src/planet/     — PlanetGenerator (procedural mesh, shaders)
+src/scene/      — SceneManager (Babylon.js setup, render loop)
+src/planet/     — LODPlanet (quadtree terrain, chunked LOD)
 src/flight/     — FlightModel (physics, state)
 src/controls/   — KeyboardControls, GamepadControls (input)
-src/atmosphere/ — отложено (атмосфера после ландшафта и освещения), Sun.ts (day/night cycle)
+src/atmosphere/ — Sun.ts (day/night cycle, PBR lighting)
+src/plane/      — PlaneVisual (aircraft mesh, PBR materials)
+src/camera/     — ChaseCamera (smooth follow, body-frame orientation)
 ```
+
+## Skill Development: Visual Debugging
+
+Навык визуальной отладки WebGL-приложений развивается в `docs/skills/visual-debugging.md`.
+
+Метод: редукция сцены до минимального набора элементов, бинарный поиск проблемного компонента, скриншоты через CDP на каждом шаге.
+
+При любой визуальной проблеме (объект в сцене, но не виден) — следовать протоколу из skill-файла перед изменением кода.
