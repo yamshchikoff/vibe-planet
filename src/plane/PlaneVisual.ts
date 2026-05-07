@@ -3,6 +3,7 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Quaternion } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
 
 export class PlaneVisual {
@@ -11,7 +12,7 @@ export class PlaneVisual {
 
   constructor(scene?: Scene) {
     this.group = new TransformNode('planeGroup', scene);
-    this.group.scaling.set(0.006, 0.006, 0.006);
+    this.group.scaling.set(0.3, 0.3, 0.3);
 
     // Fuselage (along Z axis, nose at -Z) → 15m long × 1.8m wide
     const body = this.part(0.3, 0.3, 2.5, '#5a5a5a', scene);
@@ -51,6 +52,7 @@ export class PlaneVisual {
     mat.albedoColor = Color3.FromHexString(color);
     mat.metallic = 0.3;
     mat.roughness = 0.6;
+    mat.emissiveColor = Color3.FromHexString(color).scale(0.3);
     mesh.material = mat;
     mesh.receiveShadows = true;
     this.meshes.push(mesh);
@@ -61,16 +63,9 @@ export class PlaneVisual {
     return this.group;
   }
 
-  update(
-    position: [number, number, number],
-    yaw: number,
-    pitch: number,
-    roll: number
-  ): void {
+  update(position: [number, number, number], quat: Quaternion): void {
     this.group.position.set(position[0], position[1], position[2]);
-    this.group.rotation.y = yaw;
-    this.group.rotation.x = pitch;
-    this.group.rotation.z = roll;
+    this.group.rotationQuaternion = quat;
   }
 
   dispose(): void {

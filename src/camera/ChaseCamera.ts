@@ -21,19 +21,28 @@ export class ChaseCamera {
   private firstFrame = true;
   private _desired = new Vector3();
   private _offsetVec = new Vector3();
-  private _lookDir = new Vector3();
-  private _rollQuat = new Quaternion();
+  private _camOffset: Quaternion;
+  lookDir = new Vector3();
 
   constructor(cam: FreeCamera, config?: Partial<CameraConfig>) {
     this.cam = cam;
     this.config = { ...DEFAULTS, ...config };
     this.currentPos = new Vector3();
-    if (!this.cam.rotationQuaternion) {
-      this.cam.rotationQuaternion = new Quaternion();
-    }
+
+    // Precompute camera-to-body offset quaternion.
+    // At identity: camera looks along -Z with +Y up.
+    // Body frame: +X forward, +Z up, +Y right.
+    // This offset rotates camera axes to body axes:
+    //   camera -Z → body +X  (forward)
+    //   camera +Y → body +Z  (up)
+    // Step 1: rotate (0,0,-1) to (1,0,0) — 90° around -Y
+    const q1 = Quaternion.RotationAxis(new Vector3(0, -1, 0), Math.PI / 2);
+    // Step 2: rotate (0,1,0) to (0,0,1) — 90° around +X
+    const q2 = Quaternion.RotationAxis(new Vector3(1, 0, 0), Math.PI / 2);
+    this._camOffset = q2.multiply(q1);
   }
 
-  update(targetWorldPos: Vector3, targetQuat: Quaternion, dt: number, lookAtOffset?: Vector3): void {
+  update(targetWorldPos: Vector3, targetQuat: Quaternion, dt: number): void {
     this._offsetVec.set(this.config.offset[0], this.config.offset[1], this.config.offset[2]);
     this._offsetVec.applyRotationQuaternionToRef(targetQuat, this._offsetVec);
     this._desired.copyFrom(targetWorldPos).addInPlace(this._offsetVec);
@@ -48,32 +57,13 @@ export class ChaseCamera {
 
     this.cam.position.copyFrom(this.currentPos);
 
-    // Look target — optionally offset from targetWorldPos (e.g. look below plane)
-    const lookTarget = this._lookDir.copyFrom(targetWorldPos);
-    if (lookAtOffset) lookTarget.addInPlace(lookAtOffset);
+    // Camera fully inherits plane orientation.
+    // Camera -Z → body +X (forward), camera +Y → body +Z (up)
+    this.cam.rotationQuaternion = targetQuat.multiply(this._camOffset);
 
-    // Look at the target (plane)
-    Vector3.NormalizeToRef(
-      lookTarget.subtractInPlace(this.cam.position),
-      this._lookDir
-    );
-
-    // Quaternion that rotates camera local -Z axis to lookDir
-    Quaternion.FromUnitVectorsToRef(new Vector3(0, 0, -1), this._lookDir, this.cam.rotationQuaternion!);
-
-    if (this.config.rollCouple) {
-      // Extract roll angle from targetQuat (Babylon.js YXZ Euler: roll = Z axis)
-      const roll = Math.atan2(
-        2 * (targetQuat.w * targetQuat.z + targetQuat.x * targetQuat.y),
-        1 - 2 * (targetQuat.y * targetQuat.y + targetQuat.z * targetQuat.z)
-      );
-      if (Math.abs(roll) > 0.001) {
-        // Rotate camera around lookDir by the roll angle
-        Quaternion.RotationAxisToRef(this._lookDir, roll, this._rollQuat);
-        this._rollQuat.multiplyToRef(this.cam.rotationQuaternion!, this.cam.rotationQuaternion!);
-        this.cam.rotationQuaternion!.normalize();
-      }
-    }
+    // Camera looks forward along the aircraft's longitudinal axis (body +X)
+    this.lookDir.set(1, 0, 0);
+    this.lookDir.applyRotationQuaternionToRef(targetQuat, this.lookDir);
   }
 
   setCamera(cam: FreeCamera): void {

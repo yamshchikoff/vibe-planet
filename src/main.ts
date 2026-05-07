@@ -65,8 +65,9 @@ cam.fov = 70 * Math.PI / 180;
 cam.minZ = 0.001;
 // Chase camera
 const chaseCamera = new ChaseCamera(cam, {
-  offset: [0, 0.5, 2],
+  offset: [-2, 0, 0.5],
   lerpSpeed: 0.3,
+  rollCouple: false,
 });
 // Game loop
 const _quat = new Quaternion();
@@ -85,11 +86,10 @@ scene.onUpdate((dt) => {
   debug.update();
   const state = flight.getState();
   const [px, py, pz] = state.position;
-  const { yaw, pitch, roll } = state.orientation;
-  plane.update([px, py, pz], yaw, pitch, roll);
+  _quat.copyFrom(flight.getQuaternion());
+  plane.update([px, py, pz], _quat);
   // Chase camera — smooth follow behind/above plane
-  Quaternion.FromEulerAnglesToRef(pitch, yaw, roll, _quat);
-  chaseCamera.update(new Vector3(px, py, pz), _quat, dt, new Vector3(0, -1, 0));
+  chaseCamera.update(new Vector3(px, py, pz), _quat, dt);
   // LOD updates use actual camera position
   const chunksBefore = planet['activeMeshes']?.size ?? 0;
   planet.update(cam.position);

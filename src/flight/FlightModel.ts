@@ -20,7 +20,7 @@ export class FlightModel {
   private _qRot = new Quaternion();
   private _eulerOut = new Vector3();
   private _axis = new Vector3();
-  private _fwdBase = new Vector3(0, 0, -1);
+  private _fwdBase = new Vector3(1, 0, 0);
   private _m1 = new Matrix();
 
   constructor(planetRadius = 6371, spawnPosition?: [number, number, number]) {
@@ -64,23 +64,25 @@ export class FlightModel {
 
     if (input.pitch === 0 && input.yaw === 0 && input.roll === 0) return;
 
-    // Yaw around world Y (left-multiply)
+    // All rotations are in body-fixed frame: right-multiply q = q * q_local
+
+    // Yaw around body Z (vertical axis)
     if (input.yaw !== 0) {
-      this._axis.set(0, 1, 0);
+      this._axis.set(0, 0, 1);
       Quaternion.RotationAxisToRef(this._axis, input.yaw * YAW_RATE * dt, this._qRot);
-      this._qRot.multiplyToRef(this.quat, this._dq);
+      this.quat.multiplyToRef(this._qRot, this._dq);
       this.quat.copyFrom(this._dq);
     }
-    // Roll around local Z (right-multiply)
+    // Roll around body X (longitudinal axis)
     if (input.roll !== 0) {
-      this._axis.set(0, 0, 1);
+      this._axis.set(1, 0, 0);
       Quaternion.RotationAxisToRef(this._axis, input.roll * ROLL_RATE * dt, this._qRot);
       this.quat.multiplyToRef(this._qRot, this._dq);
       this.quat.copyFrom(this._dq);
     }
-    // Pitch around local X (right-multiply)
+    // Pitch around body Y (lateral axis)
     if (input.pitch !== 0) {
-      this._axis.set(1, 0, 0);
+      this._axis.set(0, 1, 0);
       Quaternion.RotationAxisToRef(this._axis, input.pitch * PITCH_RATE * dt, this._qRot);
       this.quat.multiplyToRef(this._qRot, this._dq);
       this.quat.copyFrom(this._dq);
@@ -100,7 +102,7 @@ export class FlightModel {
     const speed = this.state.throttle * this.cruiseSpeed;
 
     // Forward direction from orientation (reset base each frame to avoid mutation)
-    this._fwdBase.set(0, 0, -1);
+    this._fwdBase.set(1, 0, 0);
     const fwd = this._fwdBase.applyRotationQuaternion(this.quat);
 
     let [x, y, z] = this.state.position;
@@ -122,7 +124,7 @@ export class FlightModel {
     this.state.velocity = [fwd.x * speed, fwd.y * speed, fwd.z * speed];
   }
 
-  /** Align to surface: Y=up, -Z=tangent forward (no roll) */
+  /** Align to surface: X=tangent forward, Y=right, Z=up (no roll) */
   private alignToSurface(): void {
     const [x, y, z] = this.spawnPosition;
     const up = new Vector3(x, y, z).normalize();
@@ -137,13 +139,13 @@ export class FlightModel {
       tangentFwd.normalize();
     }
 
-    // Right = Forward × Up (right-handed: det = +1)
-    const right = Vector3.Cross(tangentFwd, up).normalize();
+    // Right = Up × Forward (right-handed: det = +1 in [forward | right | up])
+    const right = Vector3.Cross(up, tangentFwd).normalize();
 
-    // Build rotation matrix: X→right, Y→up, Z→-forward (so -Z → forward)
-    this._m1.setRow(0, new Vector4(right.x, up.x, -tangentFwd.x, 0));
-    this._m1.setRow(1, new Vector4(right.y, up.y, -tangentFwd.y, 0));
-    this._m1.setRow(2, new Vector4(right.z, up.z, -tangentFwd.z, 0));
+    // Build rotation matrix columns: X→forward, Y→right, Z→up
+    this._m1.setRow(0, new Vector4(tangentFwd.x, right.x, up.x, 0));
+    this._m1.setRow(1, new Vector4(tangentFwd.y, right.y, up.y, 0));
+    this._m1.setRow(2, new Vector4(tangentFwd.z, right.z, up.z, 0));
     this._m1.setRow(3, new Vector4(0, 0, 0, 1));
     Quaternion.FromRotationMatrixToRef(this._m1, this.quat);
     this.quat.normalize();
@@ -154,6 +156,10 @@ export class FlightModel {
     this.throttleInput = 0;
     this.state = this.initialState();
     this.alignToSurface();
+  }
+
+  getQuaternion(): Quaternion {
+    return this.quat.clone();
   }
 
   setSpawn(position: [number, number, number]): void {
