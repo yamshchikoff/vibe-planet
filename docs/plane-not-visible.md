@@ -76,9 +76,36 @@ PBRMaterial with metallic/roughness requires WebGL2 extension `GL_EXT_disjoint_t
 
 The render loop in `SceneManager.ts` applies floating origin AFTER update callbacks but BEFORE `scene.render()`. If the worldGroup transform is applied while the camera quaternion was set for the pre-floating-origin camera position, the view matrix may produce incorrect clip-space coordinates for the plane.
 
-## Suggested Investigations
+## Bisection Plan
 
-1. **Draw call check**: Query `scene._renderingManager` for actual draw wrappers — confirm the plane produces draw calls
-2. **Material swap**: Replace PBRMaterial with StandardMaterial on one part — test if PBR shader is the blocker
-3. **Brightness test**: Set `emissiveColor = Color3.White()` on one part — test if emissive intensity is the issue
-4. **alwaysSelectAsActiveMesh**: Enable and check if visual output changes
+Для выяснения коренной причины используется редукция сцены (метод в `docs/skills/visual-debugging.md`).
+
+**Инфраструктура:**
+- `debug.html` — HTML-шаблон, ссылается на `src/debug-main.ts`
+- `src/debug-main.ts` — минимальный entry point
+- Запуск: `http://localhost:8080/debug.html` (тот же Vite сервер)
+- Основная сцена (`src/main.ts`) не изменяется
+
+**Шаги:**
+
+| Шаг | Компоненты | Ожидание |
+|-----|-----------|----------|
+| 0 | Только SceneManager + FlightModel + PlaneVisual + ChaseCamera + минимальный свет | Плоскость видна |
+| 1 | + Sun.ts (DirectionalLight + HemisphereLight + sun disc) | Плоскость видна или нет? |
+| 2 | + LODPlanet (ландшафт, parented в worldGroup) | Плоскость видна или нет? |
+| 3 | Весь набор как в main.ts | Полная сцена |
+
+Если плоскость ломается на шаге 1 — проблема в освещении Sun (интенсивность, направление, PBR-взаимодействие).
+Если на шаге 2 — проблема в LODPlanet (z-buffer, bounding boxes, порядок рендеринга).
+
+**На каждом шаге:** скриншот через CDP + пиксельный анализ. Скриншоты сохранять в `/tmp/debug-bisect-step-*.png`.
+
+## Quick Fixes (для проверки гипотез)
+
+Если бисект укажет на конкретный компонент, проверить:
+
+- **PBR → StandardMaterial**: заменить `PBRMaterial` на `StandardMaterial` в PlaneVisual
+- **emissiveIntensity**: `mat.emissiveIntensity = 5.0`
+- **renderingGroupId**: выставить частям самолёта `renderingGroupId = 1` (рендерить после земли)
+- **alwaysSelectAsActiveMesh**: включить на частях самолёта
+- **Light direction**: проверить, не светит ли солнце с обратной стороны

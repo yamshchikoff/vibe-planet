@@ -168,3 +168,11 @@ src/camera/     — ChaseCamera (smooth follow, body-frame orientation)
 Метод: редукция сцены до минимального набора элементов, бинарный поиск проблемного компонента, скриншоты через CDP на каждом шаге.
 
 При любой визуальной проблеме (объект в сцене, но не виден) — следовать протоколу из skill-файла перед изменением кода.
+
+### Debug entry point
+
+- `debug.html` — HTML-шаблон, сервится Vite на `http://localhost:8080/debug.html`
+- `src/debug-main.ts` — минимальная сцена (только plane + flight + camera + minimal light)
+- Основная `src/main.ts` не изменяется
+
+Текущая проблема plane visibility: bisect-план в `docs/plane-not-visible.md`.
