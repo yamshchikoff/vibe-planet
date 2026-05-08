@@ -13,9 +13,10 @@ export interface LODConfig {
   seed: number;
   heightAmplitude: number;
   maxDepth: number;
-  maxChunks: number;
   chunkResolution: number;
   biomeWarpAmplitude: number;
+  /** Fixed base depth — generate all chunks once at this depth, no LOD. 0 = adaptive LOD. */
+  baseDepth: number;
 }
 
 const DEFAULTS: Required<LODConfig> = {
@@ -23,9 +24,9 @@ const DEFAULTS: Required<LODConfig> = {
   seed: Math.random() * 2147483647,
   heightAmplitude: 8,
   maxDepth: 12,
-  maxChunks: 1000,
   chunkResolution: 16,
   biomeWarpAmplitude: 0.035,
+  baseDepth: 0,
 };
 
 const FACES: { axis: number; sign: number }[] = [
@@ -162,7 +163,7 @@ export class LODPlanet {
   private cache: Map<string, ChunkCacheEntry> = new Map();
   private scene: Scene;
   private root: TransformNode;
-  private activeMeshes: Set<string> = new Set();
+  private generated = false;
 
   constructor(config?: Partial<LODConfig>, scene?: Scene) {
     this.config = { ...DEFAULTS, ...config };
@@ -182,95 +183,30 @@ export class LODPlanet {
     return this.sampler.getHeight(worldPos.x, worldPos.y, worldPos.z);
   }
 
-  update(cameraPos: Vector3): void {
-    if (!this.scene) return;
-    const now = performance.now();
+  update(_cameraPos: Vector3): void {
+    if (!this.scene || this.generated) return;
+    this.generated = true;
+
     const R = this.config.planetRadius;
-    const maxDepth = this.config.maxDepth;
-    const distFromCenter = cameraPos.length();
-    const distFromSurface = Math.max(0, distFromCenter - R);
     const heightAmp = this.config.heightAmplitude;
+    const depth = this.config.baseDepth;
 
-    let effectiveDepth = maxDepth;
-    if (distFromSurface > 0) {
-      const levels = Math.floor(Math.log2(distFromSurface / 5 + 1));
-      effectiveDepth = Math.max(0, maxDepth - levels);
-    }
+    if (depth < 1) return;
 
-    const needed: { faceIdx: number; depth: number; tx: number; ty: number }[] = [];
+    const now = performance.now();
+    const numTiles = 1 << depth;
 
     for (let faceIdx = 0; faceIdx < 6; faceIdx++) {
-      this.traverseFace(faceIdx, cameraPos, effectiveDepth, 0, 0, 0, needed);
-    }
-
-    const neededSet = new Set<string>();
-    const newActive = new Set<string>();
-
-    for (const node of needed) {
-      const key = this.chunkKey(node.faceIdx, node.depth, node.tx, node.ty);
-      neededSet.add(key);
-
-      if (this.cache.has(key)) {
-        const entry = this.cache.get(key)!;
-        entry.lastAccess = now;
-        if (!entry.mesh.isEnabled()) {
-          entry.mesh.setEnabled(true);
-        }
-        newActive.add(key);
-      } else {
-        if (this.cache.size >= this.config.maxChunks) {
-          this.evictOldest(neededSet);
-        }
-        const mesh = this.generateChunk(node.faceIdx, node.depth, node.tx, node.ty, R, heightAmp);
-        if (mesh) {
-          mesh.setParent(this.root);
-          this.cache.set(key, { mesh, lastAccess: now });
-          newActive.add(key);
+      for (let ty = 0; ty < numTiles; ty++) {
+        for (let tx = 0; tx < numTiles; tx++) {
+          const key = this.chunkKey(faceIdx, depth, tx, ty);
+          const mesh = this.generateChunk(faceIdx, depth, tx, ty, R, heightAmp);
+          if (mesh) {
+            mesh.setParent(this.root);
+            this.cache.set(key, { mesh, lastAccess: now });
+          }
         }
       }
-    }
-
-    // Hide chunks no longer needed
-    for (const key of this.activeMeshes) {
-      if (!newActive.has(key)) {
-        const entry = this.cache.get(key);
-        if (entry) entry.mesh.setEnabled(false);
-      }
-    }
-    this.activeMeshes = newActive;
-  }
-
-  private traverseFace(
-    faceIdx: number,
-    cameraPos: Vector3,
-    maxDepth: number,
-    depth: number,
-    tx: number,
-    ty: number,
-    out: { faceIdx: number; depth: number; tx: number; ty: number }[]
-  ): void {
-    const R = this.config.planetRadius;
-    const size = 1 / (1 << depth);
-    const cu = (tx + 0.5) * size * 2 - 1;
-    const cv = (ty + 0.5) * size * 2 - 1;
-
-    const centerDir = uvToDir(faceIdx, cu, cv).normalize();
-    const surfacePos = _tmpVec.copyFrom(centerDir).scale(R);
-    const dist = Vector3.Distance(cameraPos, surfacePos);
-    const chunkWorldSize = (2 * Math.PI * R) / (4 * (1 << depth));
-
-    const shouldSplit = depth < maxDepth && dist < chunkWorldSize * 3;
-
-    if (shouldSplit) {
-      const childDepth = depth + 1;
-      const childTx = tx * 2;
-      const childTy = ty * 2;
-      this.traverseFace(faceIdx, cameraPos, maxDepth, childDepth, childTx, childTy, out);
-      this.traverseFace(faceIdx, cameraPos, maxDepth, childDepth, childTx + 1, childTy, out);
-      this.traverseFace(faceIdx, cameraPos, maxDepth, childDepth, childTx, childTy + 1, out);
-      this.traverseFace(faceIdx, cameraPos, maxDepth, childDepth, childTx + 1, childTy + 1, out);
-    } else {
-      out.push({ faceIdx, depth, tx, ty });
     }
   }
 
@@ -391,6 +327,7 @@ export class LODPlanet {
     mesh.useVertexColors = true;
 
     const mat = new PBRMaterial(`mat-${faceIdx}-${depth}-${tx}-${ty}`, this.scene);
+    mat.sideOrientation = 0; // CCW — Babylon.js v9 left-handed scene defaults to CW
     mat.roughness = totalRoughness / vertexCount;
     mat.metallic = totalMetallic / vertexCount;
     mat.clearCoat.isEnabled = true;
@@ -402,22 +339,6 @@ export class LODPlanet {
     this._verifyChunk(mesh, faceIdx, depth, tx, ty, R, heightAmp);
 
     return mesh;
-  }
-
-  private evictOldest(neededSet: Set<string>): void {
-    let oldestKey = '';
-    let oldestTime = Infinity;
-    for (const [key, entry] of this.cache) {
-      if (!neededSet.has(key) && entry.lastAccess < oldestTime) {
-        oldestTime = entry.lastAccess;
-        oldestKey = key;
-      }
-    }
-    if (oldestKey) {
-      const entry = this.cache.get(oldestKey)!;
-      entry.mesh.dispose();
-      this.cache.delete(oldestKey);
-    }
   }
 
   private chunkKey(faceIdx: number, depth: number, tx: number, ty: number): string {
@@ -540,7 +461,6 @@ export class LODPlanet {
       entry.mesh.dispose();
     }
     this.cache.clear();
-    this.activeMeshes.clear();
   }
 }
 

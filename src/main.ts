@@ -46,9 +46,8 @@ const planet = new LODPlanet({
   planetRadius: 6371,
   seed: 91,
   heightAmplitude: 8,
-  maxDepth: 12,
-  maxChunks: 1000,
   chunkResolution: 16,
+  baseDepth: 4,
 }, bjsScene);
 planet.getRoot().parent = worldGroup;
 // Flight model + controls — spawn above highest mountain (seed 91, lat=20°, lon=0°, 6.64 km)
@@ -90,13 +89,8 @@ scene.onUpdate((dt) => {
   plane.update([px, py, pz], _quat);
   // Chase camera — smooth follow behind/above plane
   chaseCamera.update(new Vector3(px, py, pz), _quat, dt);
-  // LOD updates use actual camera position
-  const chunksBefore = planet['activeMeshes']?.size ?? 0;
+  // Update planet (no-op after first call with baseDepth mode)
   planet.update(cam.position);
-  const chunksAfter = planet['activeMeshes']?.size ?? 0;
-  if (frameCount <= 3) {
-    showInfo(`Frame ${frameCount}: cam=(${cam.position.x.toFixed(1)}, ${cam.position.y.toFixed(1)}, ${cam.position.z.toFixed(3)}) chunks=${chunksBefore}->${chunksAfter}`);
-  }
 });
 // Controls overlay toggle
 const overlay = document.getElementById('controls-help');
