@@ -176,7 +176,21 @@ debug-сервер (`debug.html` → `debug-main.ts`) показывает са�
 |---|-----------|-----------|-----|
 | 1 | UBO пустой (size=0) — `finalizeSceneUbo()` не вызывается | SceneManager | `engine.disableUniformBuffers = true` |
 | 2 | `_referencePoint = (0,0,0)` → LookAt вырождается после floating origin | SceneManager | `_referencePoint = new Vector3(0, 0, 1000)` |
-| 3 | ChaseCamera `_camOffset` даёт неправильную ориентацию камеры | ChaseCamera | В debug-сцене не используется; в production требует пересчёта |
+| 3 | ChaseCamera `_camOffset`: комментарий говорит «камера смотрит вдоль -Z», но FreeCamera в Babylon.js LH смотрит вдоль **+Z**. `q1 = RotationAxis((0,-1,0), π/2)` маппит `+Z → -X` (назад) вместо `+Z → +X` (вперёд) | ChaseCamera | `q1 = RotationAxis((0, 1, 0), π/2)` — маппит `+Z → +X` |
+
+### Детали root cause #3 (_camOffset)
+
+`ChaseCamera._camOffset` вычисляется как `q2 * q1` где:
+
+- `q1 = RotationAxis((0, -1, 0), π/2)` — предполагалось: маппит camera -Z → body +X
+- `q2 = RotationAxis((1, 0, 0), π/2)` — маппит camera +Y → body +Z
+
+Но `FreeCamera` в Babylon.js (left-handed) с identity quaternion смотрит вдоль **+Z**, не -Z.
+В результате `q1` маппил `+Z → -X` (назад по body-frame), и камера всегда смотрела
+в противоположную от носа самолёта сторону.
+
+**Fix:** `q1 = RotationAxis((0, 1, 0), π/2)` — маппит `+Z → +X`, камера смотрит вдоль носа.
+Верификация: `node`-скрипт подтвердил `camera +Z → [1, 0, 0]`, `camera +Y → [0, 0, 1]`.
 
 ### Референсный debug-срез
 
