@@ -61,7 +61,7 @@ plane.getMesh().parent = worldGroup;
 // Camera
 const cam = scene.getCamera();
 cam.fov = 70 * Math.PI / 180;
-cam.minZ = 1.0;
+cam.minZ = 0.001;
 // Chase camera
 const chaseCamera = new ChaseCamera(cam, {
   offset: [-2, 0, 0.5],

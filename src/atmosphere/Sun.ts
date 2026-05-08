@@ -10,7 +10,7 @@ export interface SunConfig {
   inclination: number;
 }
 
-const SUN_DISTANCE = 100_000;
+const SUN_DISTANCE = 500_000;
 const SUN_ANGULAR_RADIUS = 0.265; // degrees (sun apparent radius from Earth)
 const SUN_SPHERE_RADIUS = SUN_DISTANCE * Math.tan(SUN_ANGULAR_RADIUS * Math.PI / 180);
 const LIGHT_POSITION_SCALE = 100_000;
