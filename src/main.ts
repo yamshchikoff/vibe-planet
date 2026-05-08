@@ -40,7 +40,7 @@ const bjsScene = scene.getScene();
 showInfo(`Engine created ✓`);
 // Sun — directional + hemisphere light with day/night cycle, visible disc
 const sun = new Sun(bjsScene);
-sun.getSunDisc(bjsScene);
+sun.getSunSphere(bjsScene);
 // Planet — cube-sphere LOD with quadtree
 const planet = new LODPlanet({
   planetRadius: 6371,
@@ -76,7 +76,6 @@ let frameCount = 0;
 scene.onUpdate((dt) => {
   frameCount++;
   if (frameCount === 1) showInfo(`Render loop started ✓`);
-  sun.update(dt);
   const input = debug.getPatternName() === 'MANUAL'
     ? controls.getInput()
     : debug.getControls();

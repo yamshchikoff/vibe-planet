@@ -5,67 +5,58 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import type { Scene } from '@babylonjs/core/scene';
 
 export interface SunConfig {
   inclination: number;
-  longitude: number;
 }
+
+const SUN_DISTANCE = 500_000;
+const SUN_ANGULAR_RADIUS = 0.265; // degrees (sun apparent radius from Earth)
+const SUN_SPHERE_RADIUS = SUN_DISTANCE * Math.tan(SUN_ANGULAR_RADIUS * Math.PI / 180);
+const LIGHT_POSITION_SCALE = 100_000;
 
 export class Sun {
   private light: DirectionalLight;
   private hemi: HemisphericLight;
-  private sunDisc: Mesh | null = null;
+  private sunSphere: Mesh | null = null;
   private direction: Vector3;
-  private inclination: number;
-  private time = 0;
-  private _tmpColor = new Color3();
 
   constructor(scene: Scene, config?: Partial<SunConfig>) {
-    this.inclination = config?.inclination ?? 0.41; // ~23.5° axial tilt
-    this.light = new DirectionalLight('sun', new Vector3(0, 1, 0), scene);
+    const inclination = config?.inclination ?? 0.41; // ~23.5° axial tilt
+
+    // Compute fixed sun direction (static, no orbital motion)
+    this.direction = new Vector3(0, Math.sin(inclination), Math.cos(inclination));
+    this.direction.normalize();
+
+    // Directional light — main solar illumination
+    this.light = new DirectionalLight('sun', this.direction.scale(-1), scene);
+    this.light.position.copyFrom(this.direction.scale(LIGHT_POSITION_SCALE));
+    this.light.setDirectionToTarget(Vector3.Zero());
     this.light.intensity = 1.5;
     this.light.diffuse = new Color3(1, 0.96, 0.9); // warm white #fff5e6
 
-    this.hemi = new HemisphericLight('hemi', new Vector3(0, 0.5, 0.866), scene);
+    // Hemisphere light — sky ambient from sun direction, dim
+    this.hemi = new HemisphericLight('hemi', this.direction, scene);
     this.hemi.diffuse = new Color3(0.53, 0.81, 0.92); // sky #87CEEB
     this.hemi.groundColor = new Color3(0.23, 0.18, 0.18); // ground #3B2F2F
     this.hemi.intensity = 0.3;
-
-    this.direction = new Vector3();
   }
 
-  private createSunDisc(scene: Scene): Mesh {
-    const disc = MeshBuilder.CreatePlane('sunDisc', { size: 1 }, scene);
-    disc.billboardMode = Mesh.BILLBOARDMODE_ALL;
-    disc.scaling.set(12000, 12000, 1);
+  private createSunSphere(scene: Scene): Mesh {
+    const sphere = MeshBuilder.CreateSphere(
+      'sunSphere',
+      { diameter: SUN_SPHERE_RADIUS * 2, segments: 32 },
+      scene
+    );
+    sphere.position.copyFrom(this.direction.scale(SUN_DISTANCE));
 
-    const size = 256;
-    const texture = new DynamicTexture('sunDisc', { width: size, height: size }, scene, false);
-    texture.hasAlpha = true;
-
-    const ctx = texture.getContext();
-    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    gradient.addColorStop(0, 'rgba(255, 255, 230, 1)');
-    gradient.addColorStop(0.08, 'rgba(255, 240, 180, 1)');
-    gradient.addColorStop(0.25, 'rgba(255, 200, 80, 0.9)');
-    gradient.addColorStop(0.5, 'rgba(255, 150, 30, 0.4)');
-    gradient.addColorStop(0.75, 'rgba(255, 100, 0, 0.1)');
-    gradient.addColorStop(1, 'rgba(255, 60, 0, 0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-    texture.update();
-
-    const mat = new StandardMaterial('sunDiscMat', scene);
-    mat.opacityTexture = texture;
-    mat.emissiveTexture = texture;
-    mat.diffuseTexture = texture;
+    const mat = new StandardMaterial('sunMat', scene);
+    mat.emissiveColor = new Color3(1, 0.95, 0.7); // warm yellow
     mat.disableLighting = true;
-    disc.material = mat;
+    sphere.material = mat;
 
-    disc.renderingGroupId = 2;
-    return disc;
+    return sphere;
   }
 
   getLight(): DirectionalLight {
@@ -76,67 +67,28 @@ export class Sun {
     return this.hemi;
   }
 
-  getSunDisc(scene?: Scene): Mesh {
-    if (!this.sunDisc) {
-      this.sunDisc = this.createSunDisc(scene!);
+  getSunSphere(scene?: Scene): Mesh {
+    if (!this.sunSphere) {
+      this.sunSphere = this.createSunSphere(scene!);
     }
-    return this.sunDisc;
+    return this.sunSphere;
   }
 
   getDirection(): Vector3 {
     return this.direction;
   }
 
-  update(dt: number): void {
-    // Full rotation every 120 seconds of game time
-    this.time += dt * 0.05; // slow orbit
-
-    const angle = this.time;
-    const tilt = this.inclination;
-
-    const sx = Math.sin(angle) * Math.cos(tilt);
-    const sy = Math.sin(tilt);
-    const sz = Math.cos(angle) * Math.cos(tilt);
-
-    this.direction.set(sx, sy, sz);
-    this.direction.normalize();
-
-    this.light.position.copyFrom(this.direction.scale(100000));
-    this.light.setDirectionToTarget(Vector3.Zero());
-
-    // Dim at night — directional light is the primary source
-    const height = sy;
-    this.light.intensity = 1.5 * Math.max(0, height);
-
-    // Hemisphere light: rotate direction to track the sun, dim at night
-    const noonIntensity = 0.35;
-    const nightIntensity = 0.02;
-    const dayFactor = Math.max(0, height);
-    this.hemi.intensity = nightIntensity + (noonIntensity - nightIntensity) * dayFactor;
-
-    // Rotate hemisphere direction to follow the sun (sky from sun direction, ground from opposite)
-    this.hemi.direction.copyFrom(this.direction);
-
-    // Sky: cool blue at noon => warm orange at sunset => dark grey at night
-    const t1 = Math.max(0, -height * 2);
-    const t2 = 1 - dayFactor;
-    Color3.LerpToRef(new Color3(0.53, 0.81, 0.92), new Color3(1, 0.53, 0.27), t1, this._tmpColor);
-    Color3.LerpToRef(this._tmpColor, new Color3(0.07, 0.07, 0.13), t2, this._tmpColor);
-    this.hemi.diffuse.copyFrom(this._tmpColor);
-
-    // Ground: dark brown at noon => darker at night
-    Color3.LerpToRef(new Color3(0.23, 0.18, 0.18), new Color3(0.10, 0.10, 0.18), t2, this._tmpColor);
-    this.hemi.groundColor.copyFrom(this._tmpColor);
-
-    // Sun disc position
-    if (this.sunDisc) {
-      this.sunDisc.position.copyFrom(this.direction.scale(500000));
-    }
+  /**
+   * Currently no-op — sun is static. Will animate when day/night cycle
+   * is re-enabled.
+   */
+  update(_dt: number): void {
+    // Static sun — no orbital motion
   }
 
   dispose(): void {
-    if (this.sunDisc) {
-      this.sunDisc.dispose();
+    if (this.sunSphere) {
+      this.sunSphere.dispose();
     }
     this.light.dispose();
     this.hemi.dispose();
