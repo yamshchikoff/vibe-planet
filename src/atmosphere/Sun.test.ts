@@ -21,6 +21,7 @@ vi.mock('@babylonjs/core/Lights/hemisphericLight', () => ({
       intensity: 0,
       diffuse: { copyFrom: vi.fn() },
       groundColor: { copyFrom: vi.fn() },
+      direction: { copyFrom: vi.fn() },
       setEnabled: vi.fn(),
       dispose: vi.fn(),
     };

@@ -28,7 +28,7 @@ export class Sun {
     this.light.intensity = 1.5;
     this.light.diffuse = new Color3(1, 0.96, 0.9); // warm white #fff5e6
 
-    this.hemi = new HemisphericLight('hemi', new Vector3(0, 1, 0), scene);
+    this.hemi = new HemisphericLight('hemi', new Vector3(0, 0.5, 0.866), scene);
     this.hemi.diffuse = new Color3(0.53, 0.81, 0.92); // sky #87CEEB
     this.hemi.groundColor = new Color3(0.23, 0.18, 0.18); // ground #3B2F2F
     this.hemi.intensity = 0.3;
@@ -104,16 +104,18 @@ export class Sun {
     this.light.position.copyFrom(this.direction.scale(100000));
     this.light.setDirectionToTarget(Vector3.Zero());
 
-    // Dim at night
+    // Dim at night — directional light is the primary source
     const height = sy;
-    const intensity = 0.3 + 0.7 * Math.max(0, height);
-    this.light.intensity = 1.5 * intensity;
+    this.light.intensity = 1.5 * Math.max(0, height);
 
-    // Hemisphere light: dynamic sky/ground colors and intensity
-    const noonIntensity = 0.40;
-    const nightIntensity = 0.12;
+    // Hemisphere light: rotate direction to track the sun, dim at night
+    const noonIntensity = 0.35;
+    const nightIntensity = 0.02;
     const dayFactor = Math.max(0, height);
     this.hemi.intensity = nightIntensity + (noonIntensity - nightIntensity) * dayFactor;
+
+    // Rotate hemisphere direction to follow the sun (sky from sun direction, ground from opposite)
+    this.hemi.direction.copyFrom(this.direction);
 
     // Sky: cool blue at noon => warm orange at sunset => dark grey at night
     const t1 = Math.max(0, -height * 2);
