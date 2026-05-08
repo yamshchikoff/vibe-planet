@@ -1,5 +1,4 @@
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
-import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -18,7 +17,6 @@ const LIGHT_POSITION_SCALE = 100_000;
 
 export class Sun {
   private light: DirectionalLight;
-  private hemi: HemisphericLight;
   private sunSphere: Mesh | null = null;
   private direction: Vector3;
 
@@ -29,18 +27,12 @@ export class Sun {
     this.direction = new Vector3(0, Math.sin(inclination), Math.cos(inclination));
     this.direction.normalize();
 
-    // Directional light — main solar illumination
+    // Directional light — only light source, creates sharp day/night terminator
     this.light = new DirectionalLight('sun', this.direction.scale(-1), scene);
     this.light.position.copyFrom(this.direction.scale(LIGHT_POSITION_SCALE));
     this.light.setDirectionToTarget(Vector3.Zero());
     this.light.intensity = 1.5;
     this.light.diffuse = new Color3(1, 0.96, 0.9); // warm white #fff5e6
-
-    // Hemisphere light — sky ambient from sun direction, dim
-    this.hemi = new HemisphericLight('hemi', this.direction, scene);
-    this.hemi.diffuse = new Color3(0.53, 0.81, 0.92); // sky #87CEEB
-    this.hemi.groundColor = new Color3(0.23, 0.18, 0.18); // ground #3B2F2F
-    this.hemi.intensity = 0.3;
   }
 
   private createSunSphere(scene: Scene): Mesh {
@@ -61,10 +53,6 @@ export class Sun {
 
   getLight(): DirectionalLight {
     return this.light;
-  }
-
-  getHemisphere(): HemisphericLight {
-    return this.hemi;
   }
 
   getSunSphere(scene?: Scene): Mesh {
@@ -91,6 +79,5 @@ export class Sun {
       this.sunSphere.dispose();
     }
     this.light.dispose();
-    this.hemi.dispose();
   }
 }
