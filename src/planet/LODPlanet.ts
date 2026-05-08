@@ -273,9 +273,10 @@ export class LODPlanet {
 
         const dirU = uvToDirTangent(faceIdx, u, v, 'u').normalize();
         const dirV = uvToDirTangent(faceIdx, u, v, 'v').normalize();
-        const nx = dir.x - dhdu * dirU.x - dhdv * dirV.x;
-        const ny = dir.y - dhdu * dirU.y - dhdv * dirV.y;
-        const nz = dir.z - dhdu * dirU.z - dhdv * dirV.z;
+        const gs = heightAmp / R;
+        const nx = dir.x - gs * dhdu * dirU.x - gs * dhdv * dirV.x;
+        const ny = dir.y - gs * dhdu * dirU.y - gs * dhdv * dirV.y;
+        const nz = dir.z - gs * dhdu * dirU.z - gs * dhdv * dirV.z;
         const nlen = Math.sqrt(nx * nx + ny * ny + nz * nz);
         if (nlen > 1e-10) {
           normals.push(nx / nlen, ny / nlen, nz / nlen);
