@@ -2,6 +2,31 @@
 
 Навык систематической отладки визуальных проблем в WebGL-приложениях.
 
+## ⚠️ Первое действие при визуальной проблеме
+
+**Не лезь в WebGL, не читай readPixels, не смотри на матрицы.**
+
+1. Снять скриншот через CDP → `/tmp/debug-screenshot.png`
+2. **Сразу прогнать через OpenCV** одной командой:
+
+```bash
+bash /tmp/debug-cycle.sh /tmp/debug-screenshot.png
+```
+
+Скрипт `debug-cycle.sh` делает `scp` на dev VM и запускает `analyze_bisect.py analyze`. Работает из любого места. Не требует помнить флаги, пути, или IP адрес dev VM.
+
+Если нужно сравнить два скриншота:
+```bash
+bash /tmp/debug-cycle.sh /tmp/before.png /tmp/after.png
+```
+
+**CONTENT DETECTED** → объект виден, ищи проблему не в рендеринге.  
+**NO CONTENT** → объект не рендерится, продолжай bisect.
+
+`Page.captureScreenshot` — authoritative source of truth. `readPixels` в 50% случаев показывает не тот буфер.
+
+**Почему единый скрипт, а не два шага:** практика показала, что ручной `scp ... && ssh ...` систематически забывается. Когда скриншот и анализ разнесены — анализ пропускается. Единая команда решает проблему.
+
 ## Принцип
 
 Визуальная проблема — это когда объект есть в сцене (в мешах, в active meshes), но не виден на экране. Метод решения — **редукция сцены**: последовательное упрощение до минимально возможного набора элементов, при котором проблема воспроизводится, затем бисектом добавлять элементы обратно.
@@ -262,8 +287,10 @@ http.get('http://localhost:9223/json', (res) => {
 
 Скрипты хранить в `/tmp/cdp-*.mjs`, запускать:
 ```bash
-cd /tmp && NODE_PATH=/tmp/node_modules node cdp-script.mjs
+cd /tmp && NODE_PATH=/tmp/node_modules node cdp-debug-full.mjs && bash /tmp/debug-cycle.sh /tmp/debug-screenshot.png
 ```
+
+**Важно:** каждый запуск CDP-скрипта завершается `debug-cycle.sh` — OpenCV-анализ происходит автоматически, не как отдельный шаг.
 
 ## Babylon.js: подводные камни
 
@@ -276,6 +303,132 @@ cd /tmp && NODE_PATH=/tmp/node_modules node cdp-script.mjs
 | `Page.enable` повторно | Runtime контекст сбрасывается | Не вызывать на уже открытой вкладке |
 | floating origin | bounding boxes не обновлены | Проверить `computeWorldMatrix(true)` |
 | Vite не подхватил новый .html | 404 на debug.html | Перезапустить `npm run dev` |
+
+## Автоматический анализ скриншотов через OpenCV
+
+Для ускорения бисекта используется компьютерное зрение: автоматическое сравнение скриншотов соседних шагов и детекция новых объектов на сцене.
+
+### Установка на Dev VM
+
+OpenCV ставится через pip (требуется только на dev VM, где работает Chrome):
+
+```bash
+# Установка pip (если не установлен)
+wget https://bootstrap.pypa.io/get-pip.py -O /tmp/get-pip.py
+python3 /tmp/get-pip.py --user --break-system-packages
+
+# Установка OpenCV
+export PATH=$PATH:/home/claude/.local/bin
+pip install opencv-python numpy --break-system-packages --user
+
+# Проверка
+python3 -c "import cv2; print(cv2.__version__)"
+```
+
+**Важно:** на Ubuntu 26.04 с Python 3.14 `ensurepip` отсутствует, `apt install python3-pip` требует sudo с паролем. `--break-system-packages` необходим из-за PEP 668.
+
+### Единый скрипт debug-cycle.sh
+
+Скрипт `/tmp/debug-cycle.sh` на host — единая точка входа для визуальной отладки. Принимает 1 или 2 скриншота, копирует на dev VM, запускает OpenCV-анализ, выводит вердикт.
+
+```bash
+# Содержимое /tmp/debug-cycle.sh (хост):
+#!/bin/bash
+# Единая точка входа для визуальной отладки.
+# Хранится на хосте, скрипты анализа — тоже на хосте.
+# При запуске копирует скриншот и скрипт анализа на dev VM, запускает OpenCV.
+set -euo pipefail
+
+ANALYZER="/tmp/analyze_bisect.py"
+DEVM="claude@192.168.181.129"
+SCREENSHOT="${1:-/tmp/debug-screenshot.png}"
+SCREENSHOT2="${2:-}"
+
+echo "=== OpenCV Analysis ==="
+
+# Авто-копирование скрипта анализа на dev VM
+scp -q "$ANALYZER" "$DEVM":/tmp/analyze_bisect.py
+
+# Скриншот на dev VM
+scp -q "$SCREENSHOT" "$DEVM":/tmp/debug-input.png
+
+if [ -n "$SCREENSHOT2" ]; then
+    scp -q "$SCREENSHOT2" "$DEVM":/tmp/debug-input-2.png
+    ssh "$DEVM" "python3 /tmp/analyze_bisect.py analyze /tmp/debug-input.png && echo '---' && python3 /tmp/analyze_bisect.py compare /tmp/debug-input.png /tmp/debug-input-2.png"
+else
+    ssh "$DEVM" "python3 /tmp/analyze_bisect.py analyze /tmp/debug-input.png"
+fi
+
+echo "=== Done ==="
+```
+
+Использование:
+```bash
+# Один скриншот — детекция контента
+bash /tmp/debug-cycle.sh /tmp/debug-screenshot.png
+
+# Два скриншота — сравнение (diff)
+bash /tmp/debug-cycle.sh /tmp/step-0.png /tmp/step-1.png
+```
+
+### Скрипт анализа на dev VM
+
+**Артефакты отладки хранятся на хосте** (`/tmp/`), не на dev VM. Хост переживает перезапуски сессий, dev VM — нет.
+
+Скрипт `/tmp/analyze_bisect.py` на хосте. На dev VM копируется при каждом запуске:
+
+```bash
+# Копирование с host на dev VM (однократно после создания/обновления скрипта)
+scp /tmp/analyze_bisect.py claude@192.168.181.129:/tmp/analyze_bisect.py
+```
+
+Сам `debug-cycle.sh` тоже можно дополнить авто-копированием скрипта перед запуском, чтобы не помнить об этом шаге.
+
+Поддерживает три режима:
+
+**1. `analyze` — детекция объектов на скриншоте:**
+```bash
+python3 /tmp/analyze_bisect.py analyze /tmp/step-0.png
+# → Non-background pixels: 10201
+# → RESULT: CONTENT DETECTED — plane or other object likely visible
+```
+
+Сравнивает каждый пиксель с известным clear color `(5, 5, 15)`, отбрасывает шум морфологическим opening, выносит вердикт.
+
+**2. `compare` — разница между двумя скриншотами:**
+```bash
+python3 /tmp/analyze_bisect.py compare /tmp/step-0.png /tmp/step-1.png
+# → Changed pixels: 10201/921600 (1.11%)
+# → RESULT: SIGNIFICANT CHANGE — new visual element appeared
+```
+
+Сохраняет diff-маску в `/tmp/compare_diff.png` для визуальной инспекции.
+
+**3. `batch` — пакетный анализ директории:**
+```bash
+python3 /tmp/analyze_bisect.py batch /tmp/bisect/
+```
+
+Сканирует все файлы `step-*.png`, для каждого выводит детекцию и diff от предыдущего шага — полная картина бисекта одной командой.
+
+### Алгоритм
+
+```
+Скриншот → absdiff от clear_color → threshold 20 → morph opening(3×3) → countNonZero
+                                                                    ↓
+                                              > 50 px → "CONTENT DETECTED"
+                                              ≤ 50 px → "NO CONTENT"
+```
+
+Порог в 50 пикселей отсекает шум сжатия и артефакты рендеринга фона.
+
+### Воркфлоу бисекта с OpenCV
+
+1. Снять скриншот шага N (через CDP): `/tmp/bisect/step-N.png`
+2. Запустить анализ: `python3 /tmp/analyze_bisect.py batch /tmp/bisect/`
+3. Если шаг N показывает "CONTENT DETECTED" → объект появился, всё в порядке
+4. Если шаг N показывает "NO CONTENT" после того, как на шаге N-1 был "CONTENT DETECTED" → компонент, добавленный на шаге N, сломал видимость
+5. Если ни на одном шаге нет детекции → проблема в базовом рендеринге (материал, свет, камера)
 
 ## Быстрые команды
 

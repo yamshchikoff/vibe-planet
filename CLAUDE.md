@@ -175,4 +175,25 @@ src/camera/     — ChaseCamera (smooth follow, body-frame orientation)
 - `src/debug-main.ts` — минимальная сцена (только plane + flight + camera + minimal light)
 - Основная `src/main.ts` не изменяется
 
+### OpenCV Analysis Protocol (ВАЖНО)
+
+При любой визуальной отладке — **прежде чем копаться в WebGL/шейдерах/матрицах**, сделай скриншот через CDP и прогони через OpenCV-анализатор:
+
+```bash
+# 1. Скриншот через CDP (сохраняется в /tmp/ на хосте)
+cd /tmp && NODE_PATH=/tmp/node_modules node cdp-script.mjs
+
+# 2. OpenCV-анализ — ОДНА команда (не забыть!)
+bash /tmp/debug-cycle.sh /tmp/debug-screenshot.png
+```
+
+Скрипт `debug-cycle.sh` копирует скриншот на dev VM и запускает `analyze_bisect.py`. Работает без аргументов (по умолчанию `/tmp/debug-screenshot.png`). Для сравнения двух скриншотов: `bash /tmp/debug-cycle.sh /tmp/before.png /tmp/after.png`.
+
+**Почему:** `Page.captureScreenshot` показывает реальную картинку (composited page), а `readPixels` через WebGL может врать из-за буферизации, контекста, или состояния WebGL. OpenCV-анализ объективен и быстр.
+
+**Если CONTENT DETECTED** — объект виден, проблема в скриншоте/методе анализа (не там смотрел).
+**Если NO CONTENT** — объект не рендерится, продолжать bisect по протоколу visual-debugging.md.
+
+Скрипт анализа: `/tmp/analyze_bisect.py` на dev VM (см. `docs/skills/visual-debugging.md`).
+
 Текущая проблема plane visibility: bisect-план в `docs/plane-not-visible.md`.

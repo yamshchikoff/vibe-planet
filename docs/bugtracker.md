@@ -1,5 +1,138 @@
 # Баг-трекер
 
+## B-002: Невидимый самолёт — меш в `_activeMeshes`, но не рендерится
+
+**Дата:** 2026-05-08
+**Компонент:** `src/scene/SceneManager.ts`, `src/plane/PlaneVisual.ts`
+**Severity:** major (рендеринг работал частично, plane и другие StandardMaterial-объекты не выдавали пиксели)
+**Статус:** resolved
+
+**Ключевые слова:** `UBO`, `uniform buffer`, `invisible mesh`, `_activeMeshes`, `StandardMaterial`, `emissive`, `невидимый объект`, `пустой UBO`, `disableUniformBuffers`, `finalizeSceneUbo`, `SceneUboObject`, `viewProjection`
+
+### Симптомы
+
+Самолёт присутствует в сцене: 6 частей (`"part"`) в `_activeMeshes`, `alwaysSelectAsActiveMesh = true`.
+Шейдеры компилируются без ошибок, draw calls выполняются. Но на экране — ноль пикселей,
+принадлежащих самолёту. Clear color `#050510` — только фон.
+
+OpenCV-анализ скриншота через `debug-cycle.sh` → **NO CONTENT** (детектированы только пиксели
+фона, порог 50 px не пройден).
+
+В отличие от B-001, здесь рендеринг в целом работает (планета, если есть в сцене — видна),
+но конкретный объект не выдаёт пикселей.
+
+### Хронология расследования
+
+#### Этап 1: Исключение фрустум-каллинга
+
+CDP-диагностика показала:
+- `_activeMeshes.data` содержит все 6 частей самолёта
+- `isInFrustum()` = `true` для всех частей
+- `isVisible` = `true`, `isEnabled` = `true`
+- Материал: `StandardMaterial` с `emissiveColor` = 0.85× hex, `emissivePower` = 2.0
+- Свет: `DirectionalLight` + `HemisphericLight` присутствуют
+
+Фрустум-каллинг исключён.
+
+#### Этап 2: Проверка шейдеров и WebGL-состояния
+
+Добавлен тестовый объект `testQuad` (2×2 `CreateGround`, зелёный `StandardMaterial`,
+`emissiveIntensity = 10`, `backFaceCulling = false`, `renderingGroupId = 1`) —
+тоже не виден.
+
+WebGL-состояние проверено через CDP:
+- `gl.getError()` → `NO_ERROR`
+- `gl.isProgram(program)` → `true`
+- `gl.getProgramParameter(program, LINK_STATUS)` → `true`
+- `CURRENT_PROGRAM` → установлен
+- `BLEND`, `DEPTH_TEST`, `CULL_FACE` → в норме
+- Viewport: полный экран
+
+Шейдер скомпилирован и залинкован. WebGL-пайплайн на первый взгляд работает.
+
+#### Этап 3: Обнаружение UBO проблемы
+
+Проверка шейдерных uniform-блоков через `gl.getUniformBlockIndex(program, "SceneUboObject")`:
+- `blockIndex` = валидный (0 или 1)
+- `gl.getActiveUniformBlockParameter(program, blockIndex, UNIFORM_BLOCK_DATA_SIZE)` → **0**
+
+Scene UBO имел размер 0 байт — данные (viewProjection, view, projection, vEyePosition)
+никогда не загружались в GPU. Шейдер читал нулевой viewProjection → все вершины коллапсировали
+в clip space → фрагментный шейдер не запускался.
+
+**Root cause:** Babylon.js вызывает `finalizeSceneUbo()` только в `fastSnapshotMode` (оптимизация
+для частых скриншотов). По умолчанию `fastSnapshotMode = false`, поэтому Scene UBO
+никогда не наполняется данными. В обычном режиме Babylon.js полагается на то, что UBO будет
+заполнен при первом биндинге, но из-за бага в v9.5.2 этого не происходит.
+
+#### Этап 4: Исправление
+
+**Fix:** `engine.disableUniformBuffers = true` в конструкторе `SceneManager`.
+
+Это заставляет Babylon.js компилировать шейдеры без UBO-блоков (`sceneUboType = 'noUbo'`),
+используя plain `uniform mat4 viewProjection` вместо `layout(std140) uniform SceneUboObject`.
+Обычные uniform-ы биндятся индивидуально через `gl.uniform*` и не страдают от проблемы
+с незаполненным UBO-буфером.
+
+Верификация после фикса:
+- `numActiveUniformBlocks` = 0 (вместо 1)
+- `sceneUboType` = `'noUbo'`
+- `viewProjection` uniform → валидные значения (не identity)
+
+#### Этап 5: Верификация через OpenCV
+
+После фикса — скриншот через CDP, анализ через `debug-cycle.sh`:
+- Plane-only: **2005 non-background pixels → CONTENT DETECTED**
+- Diff plane-vs-quad: 118 px (0.01%) — testQuad edge-on, plane основной источник пикселей
+
+Самолёт виден. Проблема решена.
+
+### Истинная причина
+
+Babylon.js v9.5.2 не вызывает `finalizeSceneUbo()` в нормальном режиме рендеринга.
+Scene UBO (binding=1) создаётся, но остаётся пустым (размер 0 байт).
+Шейдер читает нулевую `viewProjection` матрицу → все вершины попадают
+в `clip = (0, 0, NaN, 0)` → фрагментный шейдер никогда не достигается.
+
+Проблема не проявляется для `PBRMaterial` с environment map, потому что PBR использует
+другой шейдерный путь с другими UBO.
+
+### Применённые фиксы
+
+| Файл | Строка | Изменение |
+|------|--------|-----------|
+| `src/scene/SceneManager.ts:21` | `this.engine.disableUniformBuffers = true` | Добавлено после создания Engine |
+
+### Связанные изменения (не обязательные для фикса, но улучшают отладку)
+
+| Файл | Изменение |
+|------|-----------|
+| `src/debug-main.ts:50-60` | Тестовый `testQuad` для верификации рендеринга |
+| `src/scene/SceneManager.ts:20` | `preserveDrawingBuffer: true` для readPixels (оказался не нужен — OpenCV+CDP лучше) |
+| `src/plane/PlaneVisual.ts` | `alwaysSelectAsActiveMesh = true` на всех частях (чтобы исключить frustum culling) |
+
+### Методологические находки
+
+1. **UBO debug сложен:** `gl.getActiveUniformBlockParameter(program, idx, UNIFORM_BLOCK_DATA_SIZE)`
+   возвращает размер буфера. Нулевой размер — UBO не заполнен. Надо смотреть ДО того как делать
+   выводы о матрицах.
+2. **OpenCV-first протокол работает:** `Page.captureScreenshot` → `debug-cycle.sh` показал
+   NO CONTENT до фикса и CONTENT DETECTED после. Без OpenCV ушло бы много времени на
+   ручное сравнение скриншотов.
+3. **CDP важнее readPixels:** попытки использовать `readPixels` для диагностики давали
+   противоречивые результаты (разные буферы, разное состояние WebGL).
+   `Page.captureScreenshot` показывает composited frame и всегда корректен.
+
+### Верификация
+
+- Chrome + SwiftShader на dev VM: самолёт виден (2005 px контента)
+- OpenCV `analyze`: CONTENT DETECTED
+- `_activeMeshes`: 6 частей plane + testQuad = 7 мешей
+- `_renderId`: инкрементируется (рендер-луп работает)
+- draw calls: выполняются
+
+---
+
 ## B-001: Чёрный экран — планета не рендерится
 
 **Дата:** 2026-05-07
