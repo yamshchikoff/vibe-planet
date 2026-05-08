@@ -1,5 +1,53 @@
 # Баг-трекер
 
+## B-003: Чёрные квадраты на планете — vertex colors не доходят до шейдера
+
+**Дата:** 2026-05-08
+**Компонент:** `src/planet/LODPlanet.ts`
+**Severity:** major (часть чанков планеты рендерится чёрным)
+**Статус:** resolved
+
+**Ключевые слова:** `PBRMaterial`, `VERTEXCOLOR`, `useVertexColors`, `vertex color`, `чёрный квадрат`, `планета`, `чанк`, `шейдер`
+
+### Симптомы
+
+Отдельные чанки планеты отображаются как чёрные квадраты — нет текстур/цвета.
+Одновременно новые чанки генерируются в неправильных местах в «космосе»
+(визуальная иллюзия из-за того, что чёрные чанки создают видимость отсутствия
+поверхности планеты).
+
+### Root cause
+
+`LODPlanet.generateChunk()` создаёт vertex colors через `VertexData.colors` и
+применяет их к мешу через `vertexData.applyToMesh(mesh, true)`. Но флаг
+`mesh.useVertexColors` никогда не выставляется в `true`.
+
+PBRMaterial в Babylon.js проверяет этот флаг в `materialHelper.functions.js`:
+```javascript
+const hasVertexColors = mesh.useVertexColors && mesh.isVerticesDataPresent(`color`);
+defines["VERTEXCOLOR"] = hasVertexColors;
+```
+
+Без `useVertexColors = true` define `VERTEXCOLOR` остаётся `false`, и PBR-шейдер
+игнорирует цвета вершин. Материал рендерится с дефолтным тёмным цветом (нет
+albedo текстуры, нет base color) — выглядит как чёрный квадрат.
+
+Дополнительно, строка `(mat as unknown as { useVertexColor: boolean }).useVertexColor = true`
+не имела эффекта — свойство `useVertexColor` не существует на PBRMaterial.
+
+### Fix
+
+`src/planet/LODPlanet.ts:401` — добавлен `mesh.useVertexColors = true` после
+`vertexData.applyToMesh(mesh, true)`. Убрана бесполезная строка с `useVertexColor`.
+
+### Верификация
+
+- CDP: `mesh.useVertexColors = true`, `mesh.isVerticesDataPresent("color") = true`
+- OpenCV: 674,770 контентных пикселей, **0% очень тёмных пикселей** (до фикса были десятки тысяч)
+- Цветовое распределение: BGR (77, 78, 71) ±32 — хорошее разнообразие биомов
+
+---
+
 ## B-002: Невидимый самолёт — меш в `_activeMeshes`, но не рендерится
 
 **Дата:** 2026-05-08
