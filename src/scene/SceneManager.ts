@@ -25,8 +25,8 @@ export class SceneManager {
 
     this.camera = new FreeCamera('camera', Vector3.Zero(), this.scene);
     this.camera.fov = 75 * Math.PI / 180; // radians
-    this.camera.minZ = 0.1;
-    this.camera.maxZ = 2000000;
+    this.camera.minZ = 1.0;
+    this.camera.maxZ = 200000;
 
     this.worldGroup = new TransformNode('worldGroup', this.scene);
 
