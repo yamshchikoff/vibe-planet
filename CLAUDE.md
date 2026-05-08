@@ -175,6 +175,10 @@ src/camera/     — ChaseCamera (smooth follow, body-frame orientation)
 - `src/debug-main.ts` — минимальная сцена (только plane + flight + camera + minimal light)
 - Основная `src/main.ts` не изменяется
 
+**Правило:** `debug.html` должен быть выключен (`debug.html.bak`), когда дебаг не ведётся.
+При старте дебаг-сессии — переименовать обратно. При завершении — вернуть `.bak`.
+Основная сцена (`index.html`) всегда активна.
+
 ### Reference Debug Slice (архивный срез)
 
 Рабочий минимальный срез с рендерящимся самолётом сохранён в
