@@ -37,15 +37,6 @@ const FACES: { axis: number; sign: number }[] = [
   { axis: 2, sign: -1 },
 ];
 
-const FACE_NORMALS = [
-  new Vector3(1, 0, 0),
-  new Vector3(-1, 0, 0),
-  new Vector3(0, 1, 0),
-  new Vector3(0, -1, 0),
-  new Vector3(0, 0, 1),
-  new Vector3(0, 0, -1),
-];
-
 // Faces 3 (-Y) and 4 (+Z) produce CW winding with the default vertex grid.
 // Flipping the triangle indices corrects the winding for face culling.
 const FACE_WINDING_FLIP = [false, true, true, false, false, true];
@@ -57,7 +48,7 @@ type ChunkCacheEntry = {
   lastAccess: number;
 };
 
-function uvToDir(faceIdx: number, u: number, v: number): Vector3 {
+export function uvToDir(faceIdx: number, u: number, v: number): Vector3 {
   const { axis, sign } = FACES[faceIdx];
   const coords = [u, v];
   let ci = 0;
@@ -209,10 +200,6 @@ export class LODPlanet {
     const needed: { faceIdx: number; depth: number; tx: number; ty: number }[] = [];
 
     for (let faceIdx = 0; faceIdx < 6; faceIdx++) {
-      const camDir = _tmpVec.copyFrom(cameraPos).normalize();
-      const dot = camDir.dot(FACE_NORMALS[faceIdx]);
-      if (dot < -0.2) continue;
-
       this.traverseFace(faceIdx, cameraPos, effectiveDepth, 0, 0, 0, needed);
     }
 
@@ -308,14 +295,16 @@ export class LODPlanet {
     const du = step * 2 / res;
     const dv = step * 2 / res;
 
-    // Pre-allocate height grid for normal computation
+    // Pre-allocate height grid for normal computation.
+    // Normalize dir to sample height ON the sphere (radius R), not on the cube
+    // whose corners sit at R*sqrt(3) from center.
     const heightGrid: number[][] = [];
     for (let j = 0; j < verts; j++) {
       heightGrid[j] = [];
       for (let i = 0; i < verts; i++) {
         const u = u0 + i * du;
         const v = v0 + j * dv;
-        const dir = uvToDir(faceIdx, u, v);
+        const dir = uvToDir(faceIdx, u, v).normalize();
         const samplePos = _tmpVec.copyFrom(dir).scale(R);
         const h = this.sampler.getHeight(samplePos.x, samplePos.y, samplePos.z);
         heightGrid[j][i] = h;
@@ -410,6 +399,8 @@ export class LODPlanet {
     mesh.material = mat;
     mesh.receiveShadows = true;
 
+    this._verifyChunk(mesh, faceIdx, depth, tx, ty, R, heightAmp);
+
     return mesh;
   }
 
@@ -431,6 +422,117 @@ export class LODPlanet {
 
   private chunkKey(faceIdx: number, depth: number, tx: number, ty: number): string {
     return `f${faceIdx}-d${depth}-${tx}-${ty}`;
+  }
+
+  private _verifyChunk(
+    mesh: Mesh,
+    faceIdx: number,
+    depth: number,
+    tx: number,
+    ty: number,
+    R: number,
+    heightAmp: number,
+  ): void {
+    const pos = mesh.getVerticesData('position');
+    const norms = mesh.getVerticesData('normal');
+    if (!pos) { console.error(`[INV] ${mesh.name}: no position data`); return; }
+
+    const name = mesh.name;
+    const res = this.config.chunkResolution;
+    const verts = res + 1;
+    const vertexCount = verts * verts;
+    const maxH = Math.max(0.01, heightAmp * 1.01);
+
+    // I2: vertex count
+    if (pos.length / 3 !== vertexCount) {
+      console.error(`[INV] ${name}: I2 FAIL vertexCount=${pos.length / 3} expected=${vertexCount}`);
+    }
+
+    // I1: radial distance
+    let i1 = true;
+    let minD = Infinity, maxD = -Infinity;
+    let badCount = 0;
+    for (let i = 0; i < pos.length; i += 3) {
+      const d = Math.sqrt(pos[i] * pos[i] + pos[i + 1] * pos[i + 1] + pos[i + 2] * pos[i + 2]);
+      if (d < minD) minD = d;
+      if (d > maxD) maxD = d;
+      if (d < R - 0.1 || d > R + maxH + 0.1) { i1 = false; badCount++; }
+    }
+    if (!i1) {
+      console.error(`[INV] ${name}: I1 FAIL radialDistance min=${minD.toFixed(2)} max=${maxD.toFixed(2)} R=${R} maxH=${(R+maxH).toFixed(2)} badVerts=${badCount}`);
+    }
+
+    // I3: normal unit length
+    if (norms) {
+      let i3 = true;
+      let badNorms = 0;
+      for (let i = 0; i < norms.length; i += 3) {
+        const len = Math.sqrt(norms[i] * norms[i] + norms[i + 1] * norms[i + 1] + norms[i + 2] * norms[i + 2]);
+        if (Math.abs(len - 1) > 1e-4) { i3 = false; badNorms++; }
+      }
+      if (!i3) {
+        console.error(`[INV] ${name}: I3 FAIL badNormals=${badNorms}/${norms.length/3}`);
+      }
+    }
+
+    // I4: face origin
+    const axis = faceIdx < 2 ? 0 : (faceIdx < 4 ? 1 : 2);
+    const sign = faceIdx % 2 === 0 ? 1 : -1;
+    let i4 = true;
+    let axisViolations = 0;
+    for (let i = 0; i < pos.length; i += 3) {
+      const val = pos[i + axis];
+      if ((sign === 1 && val <= 0) || (sign === -1 && val >= 0)) { i4 = false; axisViolations++; }
+    }
+    if (!i4) {
+      const axisName = ['X', 'Y', 'Z'][axis];
+      console.error(`[INV] ${name}: I4 FAIL axis=${axisName} expectedSign=${sign > 0 ? '+' : '-'} violations=${axisViolations}`);
+    }
+
+    // I5: edge continuity with existing neighbors
+    const neighborKeys: { key: string; edge: 'left' | 'right' | 'bottom' | 'top' }[] = [];
+    // left neighbor
+    if (tx > 0) neighborKeys.push({ key: this.chunkKey(faceIdx, depth, tx - 1, ty), edge: 'right' });
+    // right neighbor
+    neighborKeys.push({ key: this.chunkKey(faceIdx, depth, tx + 1, ty), edge: 'left' });
+    // bottom neighbor
+    if (ty > 0) neighborKeys.push({ key: this.chunkKey(faceIdx, depth, tx, ty - 1), edge: 'top' });
+    // top neighbor
+    neighborKeys.push({ key: this.chunkKey(faceIdx, depth, tx, ty + 1), edge: 'bottom' });
+
+    for (const { key, edge } of neighborKeys) {
+      const entry = this.cache.get(key);
+      if (!entry) continue;
+      const nPos = entry.mesh.getVerticesData('position');
+      if (!nPos) continue;
+
+      let mismatches = 0;
+      let maxDiff = 0;
+
+      for (let k = 0; k < verts; k++) {
+        let idxThis: number, idxNeighbor: number;
+        if (edge === 'right') { idxThis = k * verts * 3; idxNeighbor = (k * verts + res) * 3; }
+        else if (edge === 'left') { idxThis = (k * verts + res) * 3; idxNeighbor = k * verts * 3; }
+        else if (edge === 'top') { idxThis = k * 3; idxNeighbor = (res * verts + k) * 3; }
+        else { idxThis = (res * verts + k) * 3; idxNeighbor = k * 3; }
+
+        const dx = Math.abs(pos[idxThis] - nPos[idxNeighbor]);
+        const dy = Math.abs(pos[idxThis + 1] - nPos[idxNeighbor + 1]);
+        const dz = Math.abs(pos[idxThis + 2] - nPos[idxNeighbor + 2]);
+        const diff = Math.max(dx, dy, dz);
+        if (diff > maxDiff) maxDiff = diff;
+        if (diff >= 0.01) mismatches++;
+      }
+
+      if (mismatches > 0) {
+        console.error(`[INV] ${name}: I5 FAIL edge=${edge} neighbor=${key} mismatches=${mismatches}/${verts} maxDiff=${maxDiff.toFixed(6)}`);
+      }
+    }
+
+    // Log if chunk is off-planet (far from expected radial range)
+    if (minD > R + heightAmp * 2 || maxD < R - heightAmp) {
+      console.error(`[INV] ${name}: OFF-PLANET minD=${minD.toFixed(2)} maxD=${maxD.toFixed(2)} R=${R}`);
+    }
   }
 
   dispose(): void {
