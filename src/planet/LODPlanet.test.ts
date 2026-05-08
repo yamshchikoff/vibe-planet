@@ -130,6 +130,136 @@ describe('uvToDir', () => {
   });
 });
 
+describe('LOD coherence invariant (I6)', () => {
+  const R = 6371;
+  const heightAmp = 8;
+  const res = 16;
+
+  function vertexPos(
+    p: LODPlanet,
+    faceIdx: number,
+    depth: number,
+    tx: number,
+    ty: number,
+    i: number,
+    j: number,
+  ): Vector3 {
+    const step = 1 / (1 << depth);
+    const u = (tx + i / res) * step * 2 - 1;
+    const v = (ty + j / res) * step * 2 - 1;
+    const dir = uvToDir(faceIdx, u, v).normalize();
+    const samplePos = new Vector3(dir.x * R, dir.y * R, dir.z * R);
+    const h = p.getHeightAt(samplePos);
+    return new Vector3(dir.x * (R + h * heightAmp), dir.y * (R + h * heightAmp), dir.z * (R + h * heightAmp));
+  }
+
+  // I6: For any vertex shared between a parent chunk at depth d
+  // and a child chunk at depth d+1, the 3D position must be identical.
+  // This ensures LOD transitions don't create cracks or flying chunks.
+  it('parent center matches all 4 children at shared corner', () => {
+    const p = new LODPlanet({ seed: 42, heightAmplitude: heightAmp });
+    const face = 0, depth = 3, tx = 0, ty = 0;
+
+    const center = vertexPos(p, face, depth, tx, ty, res / 2, res / 2);
+
+    // Child (2*tx, 2*ty) bottom-right corner = parent center
+    const c00 = vertexPos(p, face, depth + 1, 2 * tx, 2 * ty, res, res);
+    // Child (2*tx+1, 2*ty) bottom-left corner = parent center
+    const c10 = vertexPos(p, face, depth + 1, 2 * tx + 1, 2 * ty, 0, res);
+    // Child (2*tx, 2*ty+1) top-right corner = parent center
+    const c01 = vertexPos(p, face, depth + 1, 2 * tx, 2 * ty + 1, res, 0);
+    // Child (2*tx+1, 2*ty+1) top-left corner = parent center
+    const c11 = vertexPos(p, face, depth + 1, 2 * tx + 1, 2 * ty + 1, 0, 0);
+
+    expect(Vector3.Distance(center, c00)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(center, c10)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(center, c01)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(center, c11)).toBeLessThan(1e-6);
+
+    // All children agree at shared corner
+    expect(Vector3.Distance(c00, c10)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(c00, c01)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(c00, c11)).toBeLessThan(1e-6);
+
+    p.dispose();
+  });
+
+  it('parent corners match child corners', () => {
+    const p = new LODPlanet({ seed: 42, heightAmplitude: heightAmp });
+    const face = 0, depth = 3, tx = 1, ty = 2;
+
+    // Parent top-left = child(2*tx, 2*ty) top-left
+    const p_tl = vertexPos(p, face, depth, tx, ty, 0, 0);
+    const c_tl = vertexPos(p, face, depth + 1, 2 * tx, 2 * ty, 0, 0);
+    expect(Vector3.Distance(p_tl, c_tl)).toBeLessThan(1e-6);
+
+    // Parent top-right (i=res, j=0) = child(2*tx+1, 2*ty) top-right (i=res, j=0)
+    const p_tr = vertexPos(p, face, depth, tx, ty, res, 0);
+    const c_tr = vertexPos(p, face, depth + 1, 2 * tx + 1, 2 * ty, res, 0);
+    expect(Vector3.Distance(p_tr, c_tr)).toBeLessThan(1e-6);
+
+    // Parent bottom-left (i=0, j=res) = child(2*tx, 2*ty+1) bottom-left (i=0, j=res)
+    const p_bl = vertexPos(p, face, depth, tx, ty, 0, res);
+    const c_bl = vertexPos(p, face, depth + 1, 2 * tx, 2 * ty + 1, 0, res);
+    expect(Vector3.Distance(p_bl, c_bl)).toBeLessThan(1e-6);
+
+    // Parent bottom-right (i=res, j=res) = child(2*tx+1, 2*ty+1) bottom-right (i=res, j=res)
+    const p_br = vertexPos(p, face, depth, tx, ty, res, res);
+    const c_br = vertexPos(p, face, depth + 1, 2 * tx + 1, 2 * ty + 1, res, res);
+    expect(Vector3.Distance(p_br, c_br)).toBeLessThan(1e-6);
+
+    p.dispose();
+  });
+
+  it('parent edge midpoints match child shared edges', () => {
+    const p = new LODPlanet({ seed: 42, heightAmplitude: heightAmp });
+    const face = 0, depth = 3, tx = 0, ty = 0;
+
+    // Top edge midpoint: parent (i=res/2, j=0)
+    // = child(2*tx, 2*ty) top-right (i=res, j=0)
+    // = child(2*tx+1, 2*ty) top-left (i=0, j=0)
+    const p_top = vertexPos(p, face, depth, tx, ty, res / 2, 0);
+    const c0_top = vertexPos(p, face, depth + 1, 2 * tx, 2 * ty, res, 0);
+    const c1_top = vertexPos(p, face, depth + 1, 2 * tx + 1, 2 * ty, 0, 0);
+    expect(Vector3.Distance(p_top, c0_top)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(p_top, c1_top)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(c0_top, c1_top)).toBeLessThan(1e-6);
+
+    p.dispose();
+  });
+
+  it('coherence holds on all 6 faces', () => {
+    const p = new LODPlanet({ seed: 42, heightAmplitude: heightAmp });
+    const depth = 3;
+
+    for (let face = 0; face < 6; face++) {
+      const parent = vertexPos(p, face, depth, 0, 0, res / 2, res / 2);
+      const child = vertexPos(p, face, depth + 1, 0, 0, res, res);
+      expect(Vector3.Distance(parent, child)).toBeLessThan(1e-6);
+    }
+
+    p.dispose();
+  });
+
+  it('coherence holds across face boundaries (I7)', () => {
+    const p = new LODPlanet({ seed: 42, heightAmplitude: heightAmp });
+    const depth = 3;
+
+    // At depth=3, tx=7, ty=7 gives UV range [0.75, 1] → corner at (1, 1)
+    // Face 0 (+X, u=1, v=1) → (1, 1, 1) in cube space
+    // Face 2 (+Y, u=1, v=1) → (1, 1, 1) in cube space
+    // Face 4 (+Z, u=1, v=1) → (1, 1, 1) in cube space
+    const f0_corner = vertexPos(p, 0, depth, 7, 7, res, res);
+    const f2_corner = vertexPos(p, 2, depth, 7, 7, res, res);
+    const f4_corner = vertexPos(p, 4, depth, 7, 7, res, res);
+    expect(Vector3.Distance(f0_corner, f2_corner)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(f0_corner, f4_corner)).toBeLessThan(1e-6);
+    expect(Vector3.Distance(f2_corner, f4_corner)).toBeLessThan(1e-6);
+
+    p.dispose();
+  });
+});
+
 describe('LODPlanet height invariants', () => {
   it('getHeightAt returns values in [0, 1] for sphere-surface positions', () => {
     const p = new LODPlanet({ seed: 42, heightAmplitude: 8 });
