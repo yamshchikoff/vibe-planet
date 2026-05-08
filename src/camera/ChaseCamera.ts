@@ -30,13 +30,13 @@ export class ChaseCamera {
     this.currentPos = new Vector3();
 
     // Precompute camera-to-body offset quaternion.
-    // At identity: camera looks along -Z with +Y up.
+    // FreeCamera default: +Z forward, +Y up (Babylon.js LH).
     // Body frame: +X forward, +Z up, +Y right.
     // This offset rotates camera axes to body axes:
-    //   camera -Z → body +X  (forward)
+    //   camera +Z → body +X  (forward)
     //   camera +Y → body +Z  (up)
-    // Step 1: rotate (0,0,-1) to (1,0,0) — 90° around -Y
-    const q1 = Quaternion.RotationAxis(new Vector3(0, -1, 0), Math.PI / 2);
+    // Step 1: rotate (0,0,1) to (1,0,0) — 90° around +Y
+    const q1 = Quaternion.RotationAxis(new Vector3(0, 1, 0), Math.PI / 2);
     // Step 2: rotate (0,1,0) to (0,0,1) — 90° around +X
     const q2 = Quaternion.RotationAxis(new Vector3(1, 0, 0), Math.PI / 2);
     this._camOffset = q2.multiply(q1);
