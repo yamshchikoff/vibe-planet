@@ -175,6 +175,12 @@ src/camera/     — ChaseCamera (smooth follow, body-frame orientation)
 - `src/debug-main.ts` — минимальная сцена (только plane + flight + camera + minimal light)
 - Основная `src/main.ts` не изменяется
 
+### Reference Debug Slice (архивный срез)
+
+Рабочий минимальный срез с рендерящимся самолётом сохранён в
+`docs/archives/2026-05-08-debug-plane-slice/`. При подозрении на регрессию
+рендеринга — развернуть из архива и сравнить скриншоты через `debug-cycle.sh`.
+
 ### OpenCV Analysis Protocol (ВАЖНО)
 
 При любой визуальной отладке — **прежде чем копаться в WebGL/шейдерах/матрицах**, сделай скриншот через CDP и прогони через OpenCV-анализатор:

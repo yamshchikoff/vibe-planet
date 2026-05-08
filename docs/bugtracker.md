@@ -131,6 +131,70 @@ Scene UBO (binding=1) создаётся, но остаётся пустым (р
 - `_renderId`: инкрементируется (рендер-луп работает)
 - draw calls: выполняются
 
+### Финальная верификация (2026-05-08, fix/rendering branch)
+
+После устранения всех трёх причин — UBO, `_referencePoint`, направление камеры —
+debug-сервер (`debug.html` → `debug-main.ts`) показывает самолёт:
+
+- 40,706 не-фоновых пикселей (OpenCV `analyze`)
+- `_activeMeshes`: 6 частей plane (все `"part"`)
+- Plane group: `(0, 0, 8)`, rotation 25° вокруг Y, scale 1.5
+- Камера: identity quaternion, FOV 70°, nearZ 0.001
+- Освещение: DirectionalLight + HemisphericLight + emissivePower 5.0 на всех частях
+- Reference box (зелёный, впоследствии убран) — 1×1×1 на `(0, 2, 5)`
+
+### Подход к изоляции проблемы (методология debug-сервера)
+
+Чтобы добраться до рендерящегося самолёта, потребовалось исключить ВСЕ переменные,
+оставив только минимальную сцену:
+
+1. **Отказ от ChaseCamera** — `_camOffset`-кватернион ChaseCamera даёт неправильное
+   отображение осей камеры в body-frame самолёта. В debug-сцене камера установлена
+   в identity quaternion вручную — она смотрит вдоль +Z (Babylon.js left-handed default).
+
+2. **Отказ от FlightModel** — FlightModel спавнит самолёт на радиусе планеты (6373 ед.
+   от центра), и `alignToSurface()` задирает нос. В debug-сцене PlaneVisual создаётся
+   напрямую, группа позиционируется в `(0, 0, 8)` — ровно перед камерой.
+
+3. **Промежуточная проверка testBox** — перед добавлением самолёта сцена проверялась
+   с простым 4×4×4 зелёным эмиссивным боксом. Это подтвердило, что UBO fix и
+   `_referencePoint` fix работают, и проблема не в WebGL-пайплайне.
+
+4. **Замена PBRMaterial → StandardMaterial + emissive** — PBR требует сложного
+   lighting-сетапа (environment map, IBL). StandardMaterial с `emissiveColor` и
+   `emissivePower = 5.0` виден даже без PBR-освещения.
+
+5. **`alwaysSelectAsActiveMesh = true`** — чтобы исключить frustum culling на время
+   отладки.
+
+**Ключевой принцип:** отладку начинать с ультра-минимальной сцены, которая гарантированно
+рендерится (бокс), и затем по одному добавлять компоненты реальной сцены.
+
+### Сводка всех root causes
+
+| # | Root cause | Компонент | Fix |
+|---|-----------|-----------|-----|
+| 1 | UBO пустой (size=0) — `finalizeSceneUbo()` не вызывается | SceneManager | `engine.disableUniformBuffers = true` |
+| 2 | `_referencePoint = (0,0,0)` → LookAt вырождается после floating origin | SceneManager | `_referencePoint = new Vector3(0, 0, 1000)` |
+| 3 | ChaseCamera `_camOffset` даёт неправильную ориентацию камеры | ChaseCamera | В debug-сцене не используется; в production требует пересчёта |
+
+### Референсный debug-срез
+
+Архивный снэпшот рабочего состояния сохранён в
+[`docs/archives/2026-05-08-debug-plane-slice/`](archives/2026-05-08-debug-plane-slice/README.md).
+
+Содержит: `SceneManager.ts`, `PlaneVisual.ts`, `debug-main.ts`, `archive-main.ts`,
+`debug.html`, `style.css`, скриншот с видимым самолётом.
+
+**Независимый хостинг:** срез сервится напрямую из директории архива, не требует
+копирования в `src/`:
+```
+http://localhost:8080/docs/archives/2026-05-08-debug-plane-slice/debug.html
+```
+Верифицирован 2026-05-08: 6 active meshes, 13,927 px, OpenCV CONTENT DETECTED.
+
+Используется для диффа при будущих регрессиях рендеринга.
+
 ---
 
 ## B-001: Чёрный экран — планета не рендерится
