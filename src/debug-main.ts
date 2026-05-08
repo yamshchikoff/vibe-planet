@@ -1,4 +1,7 @@
 import './style.css';
+// Force shader registration — Babylon.js ES modules use dynamic imports for shaders
+import '@babylonjs/core/Shaders/default.vertex';
+import '@babylonjs/core/Shaders/default.fragment';
 import { SceneManager } from './scene/SceneManager';
 import { FlightModel } from './flight/FlightModel';
 import { PlaneVisual } from './plane/PlaneVisual';
@@ -8,6 +11,8 @@ import { Vector3, Quaternion } from '@babylonjs/core/Maths/math.vector';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas #app not found');
@@ -42,8 +47,20 @@ const chaseCamera = new ChaseCamera(cam, {
   lerpSpeed: 0.3,
 });
 
+// TEST: large quad directly at camera origin, no transforms
+const testQuad = MeshBuilder.CreateGround('testQuad', { width: 2, height: 2 }, bjsScene);
+const testMat = new StandardMaterial('testMat', bjsScene);
+testMat.diffuseColor = new Color3(0, 1, 0);
+testMat.emissiveColor = new Color3(0, 1, 0);
+testMat.emissiveIntensity = 10;
+testMat.backFaceCulling = false;
+testQuad.material = testMat;
+testQuad.position.set(0, -5, 0);
+testQuad.alwaysSelectAsActiveMesh = true;
+testQuad.renderingGroupId = 1;
+
 // Debug globals
-(window as any).__debug = { scene: sceneMgr, plane, chaseCamera, flight, cam, bjsScene };
+(window as any).__debug = { scene: sceneMgr, plane, chaseCamera, flight, cam, bjsScene, testQuad, testMat };
 
 // Game loop
 const _quat = new Quaternion();
@@ -56,8 +73,8 @@ sceneMgr.onUpdate((dt) => {
   const [px, py, pz] = state.position;
   _quat.copyFrom(flight.getQuaternion());
   plane.update([px, py, pz], _quat);
+  controls.update();
   chaseCamera.update(new Vector3(px, py, pz), _quat, dt);
 });
 
-controls.attach();
 sceneMgr.start();

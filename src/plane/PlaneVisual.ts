@@ -1,7 +1,7 @@
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Quaternion } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
@@ -51,13 +51,14 @@ export class PlaneVisual {
 
   private part(w: number, h: number, d: number, color: string, scene?: Scene): Mesh {
     const mesh = MeshBuilder.CreateBox('part', { width: w, height: h, depth: d }, scene);
-    const mat = new PBRMaterial('partMat', scene);
-    mat.albedoColor = Color3.FromHexString(color);
-    mat.metallic = 0.3;
-    mat.roughness = 0.6;
+    const mat = new StandardMaterial('partMat', scene);
+    mat.diffuseColor = Color3.FromHexString(color);
+    mat.specularColor = Color3.FromHexString(color).scale(0.3);
     mat.emissiveColor = Color3.FromHexString(color).scale(0.85);
+    mat.emissivePower = 2.0;
     mesh.material = mat;
     mesh.receiveShadows = true;
+    mesh.alwaysSelectAsActiveMesh = true;
     this.meshes.push(mesh);
     return mesh;
   }

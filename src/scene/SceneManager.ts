@@ -18,6 +18,7 @@ export class SceneManager {
 
   constructor(canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { preserveDrawingBuffer: true });
+    this.engine.disableUniformBuffers = true;
 
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.02, 0.02, 0.06, 1); // #050510
