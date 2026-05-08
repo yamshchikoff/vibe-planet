@@ -399,6 +399,7 @@ export class LODPlanet {
     vertexData.colors = new Float32Array(colors);
     vertexData.indices = new Uint32Array(indices);
     vertexData.applyToMesh(mesh, true);
+    mesh.useVertexColors = true;
 
     const mat = new PBRMaterial(`mat-${faceIdx}-${depth}-${tx}-${ty}`, this.scene);
     mat.roughness = totalRoughness / vertexCount;
@@ -406,7 +407,6 @@ export class LODPlanet {
     mat.clearCoat.isEnabled = true;
     mat.clearCoat.intensity = 0.04;
 
-    (mat as unknown as { useVertexColor: boolean }).useVertexColor = true;
     mesh.material = mat;
     mesh.receiveShadows = true;
 
