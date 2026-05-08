@@ -1,7 +1,7 @@
 import { Matrix, Quaternion, Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
 import type { FlightState, ControlInput } from './types';
 
-const SPEED_STEPS = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+const SPEED_STEPS = [0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
 const SPEED_CRUISE = 2.0;
 const THROTTLE_RATE = 4.0;
 const ROLL_RATE = 1.5;
