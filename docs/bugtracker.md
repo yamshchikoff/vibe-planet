@@ -1,5 +1,89 @@
 # Баг-трекер
 
+## B-006: Вывернутая сфера — CCW-геометрия отсекается как back faces в Babylon.js v9 left-handed scene
+
+**Дата:** 2026-05-08
+**Компонент:** `src/planet/LODPlanet.ts:generateChunk()`
+**Severity:** critical (планета рендерилась изнутри, снаружи — прозрачная)
+**Статус:** resolved
+
+**Ключевые слова:** `sideOrientation`, `winding order`, `back face culling`, `CW`, `CCW`, `left-handed scene`, `Babylon.js v9`, `Mesh constructor`, `effectiveOrientation`
+
+### Симптомы
+
+Планета выглядит прозрачной при взгляде снаружи — видна только внутренняя поверхность.
+OpenCV-анализ скриншота: 775,427 content-пикселей (много), но визуально это внутренность сферы.
+При взгляде снаружи сфера кажется пустой/прозрачной.
+
+CDP-верификация:
+- `engine.cullBackFaces` = `true`
+- `mat.backFaceCulling` = `true`
+- Все нормали направлены наружу (100% outward, проверено через cross product)
+- Все 6 граней имеют чанки с правильными инвариантами I1–I5
+
+### Root cause
+
+Babylon.js v9 (`@babylonjs/core@^9.5.2`) создаёт сцену в left-handed системе по умолчанию
+(`useRightHandedSystem = false`). В конструкторе Mesh (`mesh.ts:555-558`) это приводит
+к установке `mesh.sideOrientation = 1` (Material.ClockWiseSideOrientation):
+
+```typescript
+// mesh.ts (Babylon.js v9)
+if (this._scene.useRightHandedSystem) {
+    this.sideOrientation = 0;  // CCW = front face
+} else {
+    this.sideOrientation = 1;  // CW = front face
+}
+```
+
+Когда материал создаётся без явного `sideOrientation` (остаётся `null`), Babylon.js
+вызывает `_getEffectiveOrientation(mesh)`, который возвращает `mesh.sideOrientation = 1`.
+Это означает: `CW = front face`, `CCW = back face`.
+
+Наша геометрия генерируется с CCW winding (проверено: cross product двух рёбер треугольника
+даёт вектор, совпадающий с направлением наружу от сферы). В результате все треугольники
+трактуются как back faces и отсекаются back face culling. Рендерится только внутренняя
+поверхность сферы (там winding зеркальный, CCW снаружи = CW изнутри).
+
+### Fix
+
+Явно установить `mat.sideOrientation = 0` (Material.CounterClockWiseSideOrientation)
+на PBRMaterial чанков. Это переопределяет mesh-дефолт и говорит движку, что
+CCW-треугольники — лицевые:
+
+```typescript
+const mat = new PBRMaterial(`mat-${faceIdx}-${depth}-${tx}-${ty}`, this.scene);
+mat.sideOrientation = 0; // CCW = front face (override для left-handed сцены)
+```
+
+### Почему не сработали другие подходы
+
+| Подход | Результат |
+|--------|-----------|
+| `mat.backFaceCulling = false` | Сфера видна, но теряется производительность (рендерятся обе стороны) и появляются артефакты на стыках |
+| Развернуть индексы треугольников | Потребовалось бы менять генерацию во всех 6 faces, править `FACE_WINDING_FLIP` |
+| `mesh.sideOrientation = 0` | Mesh-свойство перезаписывается при каждом dispose/recreate. Правильный уровень — материал |
+
+### Верификация
+
+До фикса:
+- `effectiveOrientation = 1` (CW = front face)
+- 775,427 content-пикселей на скриншоте (внутренность сферы)
+- При culling = false: видна двойная стенка (передняя и задняя поверхность)
+
+После фикса:
+- `effectiveOrientation = 0` (CCW = front face)
+- 154,000 content-пикселей (только передняя полусфера, задняя правильно отсечена)
+- Culling = true: задняя полусфера не рендерится (как и должно быть)
+
+### Применённые фиксы
+
+| Файл | Строка | Изменение |
+|------|--------|-----------|
+| `src/planet/LODPlanet.ts` | ~330 | `mat.sideOrientation = 0` добавлено после создания PBRMaterial |
+
+---
+
 ## B-004: Планета «кривая» — чанки в космосе, дыры на поверхности
 
 **Дата:** 2026-05-08
