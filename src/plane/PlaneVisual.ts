@@ -12,7 +12,7 @@ export class PlaneVisual {
 
   constructor(scene?: Scene) {
     this.group = new TransformNode('planeGroup', scene);
-    this.group.scaling.set(0.3, 0.3, 0.3);
+    this.group.scaling.set(1.5, 1.5, 1.5);
 
     // Coordinate remap: old Z-forward frame → new X-forward body frame (X=forward, Y=right, Z=up)
     // old (x, y, z) → new (-z, x, y), old dims (w, h, d) → new (d, w, h)
@@ -54,8 +54,7 @@ export class PlaneVisual {
     const mat = new StandardMaterial('partMat', scene);
     mat.diffuseColor = Color3.FromHexString(color);
     mat.specularColor = Color3.FromHexString(color).scale(0.3);
-    mat.emissiveColor = Color3.FromHexString(color).scale(0.85);
-    mat.emissivePower = 2.0;
+    mat.emissiveColor = Color3.FromHexString(color);
     mesh.material = mat;
     mesh.receiveShadows = true;
     mesh.alwaysSelectAsActiveMesh = true;

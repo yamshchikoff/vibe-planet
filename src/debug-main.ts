@@ -3,17 +3,11 @@ import './style.css';
 import '@babylonjs/core/Shaders/default.vertex';
 import '@babylonjs/core/Shaders/default.fragment';
 import { SceneManager } from './scene/SceneManager';
-import { FlightModel } from './flight/FlightModel';
 import { PlaneVisual } from './plane/PlaneVisual';
-import { ChaseCamera } from './camera/ChaseCamera';
-import { FlightDebug } from './debug/FlightDebug';
 import { Vector3, Quaternion } from '@babylonjs/core/Maths/math.vector';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas #app not found');
 
@@ -33,48 +27,20 @@ const hemi = new HemisphericLight('debugHemi', new Vector3(0, 1, 0), bjsScene);
 hemi.intensity = 0.4;
 hemi.diffuse = new Color3(0.53, 0.81, 0.92);
 
-// Flight — spawn in clear sky, directly above origin
-const flight = new FlightModel(6371, [0, 6375, 0]);
-const controls = new FlightDebug(flight);
+// Camera looks along +Z (Babylon LH default)
+cam.rotationQuaternion = Quaternion.Identity();
 
-// Plane
+// Plane — placed 8 units in front of camera, rotated slightly so we see the top/side
 const plane = new PlaneVisual(bjsScene);
-plane.getMesh().parent = worldGroup;
+const planeGroup = plane.getMesh();
+planeGroup.position.set(0, 0, 8);
+// Rotate 25° around Y so camera sees more than just the side profile
+planeGroup.rotationQuaternion = Quaternion.RotationAxis(new Vector3(0, 1, 0), 0.44);
+planeGroup.parent = worldGroup;
 
-// Camera
-const chaseCamera = new ChaseCamera(cam, {
-  offset: [-2, 0, 0.5],
-  lerpSpeed: 0.3,
-});
+(window as any).__debug = { scene: sceneMgr, cam, bjsScene, plane, planeGroup };
 
-// TEST: large quad directly at camera origin, no transforms
-const testQuad = MeshBuilder.CreateGround('testQuad', { width: 2, height: 2 }, bjsScene);
-const testMat = new StandardMaterial('testMat', bjsScene);
-testMat.diffuseColor = new Color3(0, 1, 0);
-testMat.emissiveColor = new Color3(0, 1, 0);
-testMat.emissiveIntensity = 10;
-testMat.backFaceCulling = false;
-testQuad.material = testMat;
-testQuad.position.set(0, -5, 0);
-testQuad.alwaysSelectAsActiveMesh = true;
-testQuad.renderingGroupId = 1;
-
-// Debug globals
-(window as any).__debug = { scene: sceneMgr, plane, chaseCamera, flight, cam, bjsScene, testQuad, testMat };
-
-// Game loop
-const _quat = new Quaternion();
-sceneMgr.onUpdate((dt) => {
-  const input = controls.getControls();
-  flight.applyControls(input);
-  flight.update(dt);
-
-  const state = flight.getState();
-  const [px, py, pz] = state.position;
-  _quat.copyFrom(flight.getQuaternion());
-  plane.update([px, py, pz], _quat);
-  controls.update();
-  chaseCamera.update(new Vector3(px, py, pz), _quat, dt);
-});
+// Game loop — nothing to update, just render
+sceneMgr.onUpdate((_dt) => { /* static scene */ });
 
 sceneMgr.start();
