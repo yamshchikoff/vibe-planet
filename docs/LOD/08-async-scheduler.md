@@ -100,7 +100,8 @@ class AsyncJobScheduler {
 ## 5. Краевые случаи
 
 - **Web Workers не поддерживаются браузером:** shouldUseSync всегда true.
-  Вызов scheduleHeightSampling падает с ошибкой или fallback к sync.
+  Вызов scheduleHeightSampling возвращает JobTicket, чей promise резолвится
+  синхронным вызовом HeightSampler на главном потоке (fallback к sync, не ошибка)
 - **workerCount = 0:** эквивалентно отсутствию Worker-ов — всё sync
 - **Все Worker-ы заняты:** задание в очереди, выполняется когда Worker
   освободится; максимальная длина очереди = cacheSize (ограничена числом
@@ -124,4 +125,4 @@ HeightSampler (логика FBM внутри Worker). Собственный п�
 - **Worker переиспользование:** 10 заданий на 2 Worker-а → все выполнены,
   Worker-ы не пересоздавались
 - **Fallback без Worker:** мок отсутствия Worker → shouldUseSync всегда true,
-  scheduleHeightSampling падает с информативной ошибкой
+  scheduleHeightSampling возвращает JobTicket с синхронным результатом (не ошибка)

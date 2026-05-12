@@ -48,12 +48,26 @@ LRU-кэш сгенерированных чанков с write-through подд
 `put(chunkId, entry)` — добавляет запись в кэш. Если кэш полон, вызывает
 `evict(N)` для освобождения места.
 
-`evict(count)` — удаляет `count` наименее недавно использованных записей:
-1. Для каждой вытесняемой записи: mesh.dispose(), material.dispose()
-2. Вызывает BoundaryContractEngine.revoke(chunkId) для каждого
-3. Вызывает DeformationSystem.serializePatches() для сохранения патчей
-   (если есть) в persistent-слой
-4. Возвращает список evicted chunkIds
+`evict(count)` — удаляет `count` записей в порядке приоритета вытеснения:
+
+1. **evictable** — записи, явно помеченные `state: 'evictable'` (PlanetRoot
+   выставляет после merge — чанк более не нужен)
+2. **Невидимые, дальние от камеры** — чанки за горизонтом или вне frustum,
+   сортированные по расстоянию до камеры (дальние первыми)
+3. **Видимые, наименее недавно использованные** — только если нет невидимых
+   кандидатов
+
+Видимый чанк никогда не вытесняется, если в кэше есть невидимые.
+
+Для каждой вытесняемой записи:
+- mesh.dispose(), material.dispose()
+- BoundaryContractEngine.revoke(chunkId)
+- DeformationSystem.serializePatches() (если есть патчи)
+Возвращает список evicted chunkIds.
+
+Флаг `state: 'evictable'` выставляется PlanetRoot после merge (чанк больше
+не отображается). Флаг `state: 'ready'` — чанк активен и отображается.
+Флаг `state: 'generating'` — геометрия в процессе генерации.
 
 ### LOD-CS-004: Write-through для deformation
 **Приоритет:** medium (будущее)

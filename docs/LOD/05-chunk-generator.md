@@ -29,9 +29,16 @@
    Они сэмплируются напрямую из контракта соседа через
    `BoundaryContractEngine.resample(contract, d)`
 3. Если контракт отсутствует (свободное ребро) — вершины вычисляются из
-   HeightSampler и составляют новый контракт
+   HeightSampler. Контракт будет извлечён BoundaryContractEngine на фазе 5
+   из готовой геометрии — ChunkGenerator не декларирует контракты
 
 Это гарантирует C⁰ непрерывность независимо от разницы LOD-глубин.
+
+**Порядок генерации:** PlanetRoot обрабатывает pending-листья в две фазы
+(см. LOD-architecture.md §3.3): фаза 3a — все контракты доступных соседей
+собираются; фаза 3b — геометрия генерируется. Детерминированный порядок
+обхода (face-major 0→5, depth-minor, tx/ty lexicographic) гарантирует, что
+сосед «слева» и «снизу» всегда сгенерирован раньше.
 
 ### LOD-CG-002: Вычисление позиций
 **Приоритет:** high
@@ -96,23 +103,24 @@ N = D - (heightAmp / R) * (∂h/∂u * ∂D/∂u + ∂h/∂v * ∂D/∂v)
 - Sync: прямой вызов HeightSampler.sampleBatch
 - Async: FBM-сэмплирование в Web Worker, построение буферов на главном потоке
 
-### LOD-CG-007: verifyRoundTrip (статический, для тестирования)
+### LOD-CG-007: verifyRoundTrip (для тестирования)
 **Приоритет:** medium
 **Статус:** не реализовано
 
-Статический метод для проверки round-trip инварианта:
-генерирует чанк дважды с одинаковыми параметрами и сравнивает геометрию
-побитово/с tolerance.
+Метод экземпляра для проверки round-trip инварианта:
+использует `this.heightSampler`, генерирует чанк дважды с одинаковыми
+параметрами и сравнивает геометрию побитово/с tolerance.
 
 ## 4. Интерфейс
 
 ```ts
 interface ChunkGeometry {
-  positions: Float32Array;
-  normals: Float32Array;
-  colors: Float32Array;
-  indices: Uint32Array;
-  pbr: Float32Array;
+  positions: Float32Array;   // (resolution+1)² × 3 floats
+  normals: Float32Array;    // (resolution+1)² × 3 floats
+  colors: Float32Array;     // (resolution+1)² × 4 floats [r, g, b, a]
+  indices: Uint32Array;     // resolution² × 6 indices (triangle list, CCW)
+  pbr: Float32Array;        // 2 floats [roughness, metallic] per mesh
+                             // (будущее: per-vertex — (resolution+1)² × 3 [ao, roughness, metallic])
 }
 
 interface GenerateRequest {
@@ -139,7 +147,7 @@ class ChunkGenerator {
   generateAsync(request: GenerateRequest): Promise<ChunkGeometry>;
   generate(request: GenerateRequest): Promise<ChunkGeometry>;
   buildMesh(geometry: ChunkGeometry, scene: Scene, name: string): Mesh;
-  static verifyRoundTrip(sampler: HeightSampler, request: GenerateRequest): boolean;
+  verifyRoundTrip(request: GenerateRequest): boolean;
 }
 ```
 
@@ -167,8 +175,8 @@ ContractVerifier.
   A (C⁰)
 - **Нормали с высотой:** heightAmplitude > 0 → нормали не равны dir (есть наклон
   от рельефа)
-- **Round-trip:** два вызова generate с одинаковыми параметрами → идентичная
-  геометрия
+- **Round-trip:** два вызова generate() с одинаковыми параметрами → идентичная
+  геометрия (через экземпляр ChunkGenerator)
 - **Сравнение sync/async:** generateSync и generateAsync с одинаковыми
   параметрами → идентичный ChunkGeometry
 - **Биомная раскраска:** все цвета в [0, 1], нет отрицательных значений

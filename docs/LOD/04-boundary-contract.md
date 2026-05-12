@@ -4,15 +4,15 @@
 
 Центральный механизм контрактного программирования чанков. Декларирует, хранит
 и верифицирует граничные контракты для каждого ребра чанка. Обеспечивает
-межконтрактный интерфейс между чанками разных LOD-глубин.
+межконтрактный стык между чанками разных LOD-глубин.
 
 ## 2. Связь с родительской спецификацией
 
 | Требование | Как удовлетворяется |
 |------------|--------------------|
-| LOD-REQ-GEN3 | Полная реализация граничного контракта: declare, verify, межконтрактный интерфейс, guaranteed depth |
+| LOD-REQ-GEN3 | Полная реализация граничного контракта: declare, verify, межконтрактный стык, guaranteed depth |
 | LOD-REQ-GEN | Контрактное программирование: проверка входных/выходных инвариантов в declare и verify |
-| LOD-REQ-GEN3 (стохастический) | verifyStochasticInvariant для фрактальных поверхностей |
+| LOD-REQ-GEN3 (стохастический контракт) | verifyStochasticContract для фрактальных поверхностей |
 | LOD-REQ-GEN3 (негеометрический) | Хранение timeBudget, memoryBudget, seed, contentType, patchIds |
 
 ## 3. Функциональные требования
@@ -85,16 +85,18 @@
 с контрактом. Без этого контракт — чисто поверхностный (только вершины на
 стыке).
 
-### LOD-BC-006: Стохастическая верификация
+### LOD-BC-006: Стохастическая верификация контракта
 **Приоритет:** medium
 **Статус:** не реализовано
 
-`verifyStochasticInvariant(contracts, sampleSize)` выполняет статистическую
+`verifyStochasticContract(contracts, sampleSize)` выполняет статистическую
 проверку M пар контрактов на разных глубинах, гранях и seed-ах:
 
 - Измеряет угол тангенциального отклонения в каждой общей вершине
 - Проверяет: mean ≈ 0, variance < порог, нет систематического bias
-- Возвращает `{ meanBias, variance, passesInvariant, failures[] }`
+- Проверяет: ни одно измерение не превышает `maxAngleDeg` из контракта
+  (worst-case bound для визуального дефекта)
+- Возвращает `{ meanBias, variance, maxObserved, passesContract, failures[] }`
 
 ### LOD-BC-007: Отзыв контракта
 **Приоритет:** high
@@ -109,7 +111,12 @@ merge и cache eviction.
 
 Контракт хранит негеометрические поля:
 - **timeBudgetMs:** бюджет времени генерации (N(d) в мс)
-- **memoryBudgetBytes:** бюджет памяти (для расчёта размера кэша)
+- **memoryBudgetBytes:** бюджет памяти, вычисляется как
+  `((resolution + 1)² × 10 + resolution² × 6 × 3) × 4` байт
+  (10 floats на вершину: positions 3 + normals 3 + colors 4;
+  6 индексов на ячейку сетки × 3 байта на Uint16; для Uint32 — × 4).
+  При resolution = 16: ~50 KiB; при resolution = 32: ~200 KiB.
+  Бюджет не зависит от глубины при фиксированном resolution
 - **seed:** детерминированный seed для регенерации
 - **contentType:** семантический тип местности (каньон, дорога, ...)
 - **patchIds:** список ID применённых deformation-патчей
@@ -126,6 +133,8 @@ interface EdgeContract {
   heightProfile: number[];
   tangents: Vector3[];
   guaranteedDepth: number;
+  g1Guarantee: 'deterministic' | 'stochastic';
+  maxAngleDeg: number;           // допустимый max угол разрыва для stochastic
   timeBudgetMs: number;
   memoryBudgetBytes: number;
   seed: number;
@@ -159,7 +168,7 @@ class BoundaryContractEngine {
   createInterface(chunkAId: string, chunkBId: string, edge: Edge): InterContractEdge;
   resample(contract: EdgeContract, targetDepth: number): EdgeContract;
   verifyGuaranteedDepth(chunkId: string, contract: EdgeContract): boolean;
-  verifyStochasticInvariant(contracts: EdgeContract[], sampleSize: number): StochasticResult;
+  verifyStochasticContract(contracts: EdgeContract[], sampleSize: number): StochasticResult;
   revoke(chunkId: string): void;
 }
 ```
@@ -187,5 +196,5 @@ ContractVerifier (для DEBUG-проверок в declare/verify). В оста�
 - **Cross-LOD verify:** чанк d и сосед d+1 → resample → verify passed
 - **Умышленное нарушение:** изменить позицию вершины в контракте → verify
   возвращает failed с типом 'position'
-- **Стохастический инвариант:** 1000 случайных пар контрактов → meanBias ≈ 0
+- **Стохастический контракт:** 1000 случайных пар → meanBias ≈ 0, maxObserved ≤ maxAngleDeg
 - **Revoke:** после revoke, попытка verify с отозванным контрактом → ошибка

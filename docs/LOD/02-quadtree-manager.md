@@ -11,7 +11,7 @@
 | Требование | Как удовлетворяется |
 |------------|--------------------|
 | LOD-REQ-GEN2 | Split и merge операции с полным отслеживанием инвариантов: внутренние стыки, внешний периметр, round-trip |
-| LOD-REQ-003 | Обход невидимых чанков через traverseOccluded |
+| LOD-REQ-003 | Обход невидимых чанков выполняется PlanetRoot (владеет и QuadtreeManager, и LODEvaluator) |
 | LOD-REQ-GEN | Контрактная проверка depth delta ≤ 1 после каждой операции |
 
 ## 3. Функциональные требования
@@ -92,11 +92,11 @@ depth 0 с координатами (tx=0, ty=0). Все корни в сост�
 **Приоритет:** high
 **Статус:** не реализовано
 
-`traverseVisible(camera, visitor)` — обходит видимые узлы.
-`traverseOccluded(camera, visitor)` — обходит невидимые узлы (REQ-003).
-
-Оба обхода depth-first, visitor вызывается для каждого узла, включая split-узлы
-(которые делегируют обход детям).
+QuadtreeManager предоставляет доступ к корням дерева (`getRoots()`) и навигацию
+по соседям (`getNeighbor`, `getNeighborAtDepth`). Непосредственный обход
+дерева (traverseVisible / traverseOccluded) выполняется PlanetRoot, который
+владеет и QuadtreeManager, и LODEvaluator. Это разделение сохраняет
+QuadtreeManager как чистое дерево без логики видимости.
 
 ### LOD-QM-007: Max depth delta invariant
 **Приоритет:** high
@@ -105,9 +105,10 @@ depth 0 с координатами (tx=0, ty=0). Все корни в сост�
 `enforceMaxDepthDelta(node)` — проверяет, что разница глубин любых соседних
 узлов ≤ 1. При нарушении — принудительный split менее глубокого соседа.
 
-Вызывается после каждого цикла split/merge. Рекурсивен (ripple): split соседа
-может создать новые нарушения, процесс повторяется до стабилизации (но не
-более maxDepth итераций).
+Вызывается после каждого цикла split/merge. Обход в ширину (BFS): сначала
+все нарушения уровня 1 (соседи на расстоянии 1 ребра), затем уровня 2, и т.д.
+BFS гарантирует завершение за минимальное число итераций и предсказуем.
+Процесс продолжается до стабилизации, но не более maxDepth итераций.
 
 ## 4. Интерфейс
 
@@ -142,8 +143,6 @@ class QuadtreeManager {
   merge(children: QuadNode[]): QuadNode;
   getNeighbor(node: QuadNode, edge: Edge): QuadNode | null;
   getNeighborAtDepth(node: QuadNode, edge: Edge, targetDepth: number): QuadNode | null;
-  traverseVisible(camera: Vector3, visitor: (n: QuadNode) => void): void;
-  traverseOccluded(camera: Vector3, visitor: (n: QuadNode) => void): void;
   enforceMaxDepthDelta(node: QuadNode): void;
 }
 ```

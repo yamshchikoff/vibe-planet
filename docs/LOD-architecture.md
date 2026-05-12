@@ -13,7 +13,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     PlanetRoot (Facade)                          │
-│   update(cameraPos), getHeightAt(worldPos), dispose()           │
+│   update(camera), getHeightAt(worldPos), dispose()              │
 │   Удовлетворяет: REQ-001, REQ-002, REQ-003 (оркестрация)        │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
@@ -78,14 +78,16 @@
 ### 2.1 PlanetRoot (Facade)
 
 **Ответственность:** Владение жизненным циклом всех LOD-подсистем, выполнение
-покадрового цикла: оценка LOD → split/merge → генерация → кэширование →
-присоединение мешей к сцене.
+покадрового цикла: сбор параметров камеры → оценка LOD → split/merge →
+генерация → кэширование → присоединение мешей к сцене.
+Принимает Babylon.js `Camera`, из которой извлекаются позиция, FOV, viewport —
+параметры, необходимые для вычисления screen-space размера чанка.
 
 **Ключевой интерфейс:**
 ```ts
 class PlanetRoot {
   constructor(config: PlanetConfig, scene: Scene);
-  update(cameraPosition: Vector3): void;
+  update(camera: Camera): void;
   getHeightAt(worldPosition: Vector3): number;
   getQuadtreeSnapshot(): QuadtreeSnapshot;   // для тестов
   dumpContracts(): ContractReport[];         // для отладки
@@ -100,15 +102,15 @@ BoundaryContractEngine, PolarTopologyHandler, ContractVerifier.
 
 **Ответственность:** Ведение логического квадродерева на 6 гранях кубической
 сферы, выполнение split/merge операций, энфорсмент инварианта: разница глубин
-соседних чанков не превышает 1.
+соседних чанков не превышает 1. Чистое дерево — не владеет геометрией и не
+выполняет обход (traversal). Обход (traverseVisible / traverseOccluded)
+выполняется PlanetRoot, который владеет и QuadtreeManager, и LODEvaluator.
 
 **Ключевой интерфейс:**
 ```ts
 class QuadtreeManager {
   constructor(maxDepth: number);
   getRoots(): QuadNode[];
-  traverseVisible(camera: Vector3, visitor: (n: QuadNode) => void): void;
-  traverseOccluded(camera: Vector3, visitor: (n: QuadNode) => void): void;
   split(node: QuadNode): QuadNode[];
   merge(children: QuadNode[]): QuadNode;
   getNeighbor(node: QuadNode, edge: Edge): QuadNode | null;
@@ -141,8 +143,10 @@ class LODEvaluator {
 ### 2.4 BoundaryContractEngine
 
 **Ответственность:** Декларация, хранение и верификация граничных контрактов
-для каждого ребра чанка. Обеспечивает межконтрактный интерфейс между чанками
+для каждого ребра чанка. Обеспечивает межконтрактный стык между чанками
 разных LOD-глубин. Центральный механизм C⁰ и G¹ непрерывности.
+Контракт явно указывает тип G¹-гарантии: `g1Guarantee: 'deterministic' |
+'stochastic'` (см. LOD-chunk-system.md §3.2).
 
 **Ключевой интерфейс:**
 ```ts
@@ -152,7 +156,7 @@ class BoundaryContractEngine {
   createInterface(chunkAId: string, chunkBId: string, edge: Edge): InterContractEdge;
   resample(contract: EdgeContract, targetDepth: number): EdgeContract;
   verifyGuaranteedDepth(chunkId: string, contract: EdgeContract): boolean;
-  verifyStochasticInvariant(contracts: EdgeContract[], sampleSize: number): StochasticResult;
+  verifyStochasticContract(contracts: EdgeContract[], sampleSize: number): StochasticResult;
   revoke(chunkId: string): void;
 }
 ```
@@ -213,6 +217,7 @@ class CacheSubsystem {
   writePatch(chunkId: string, patch: DeformationPatch): void;
   evict(count: number): string[];
   getSize(): number;
+  getMaxSize(): number;
   getPatches(chunkId: string): DeformationPatch[];
   getBaseGeometry(chunkId: string): ChunkGeometry | undefined;
   dispose(): void;
@@ -307,19 +312,28 @@ class ContractVerifier {
 ### Фаза 0: Движение камеры
 
 ```
-cameraPos изменяется → PlanetRoot.update(cameraPos)
+camera изменяется → PlanetRoot.update(camera)
+  → PlanetRoot извлекает camera.position, camera.fov, viewport
+  → формирует CameraParams для LODEvaluator
 ```
 
 ### Фаза 1: LOD-оценка
 
 ```
-PlanetRoot вызывает:
-  QuadtreeManager.traverseVisible(camera, visitor)
-  QuadtreeManager.traverseOccluded(camera, visitor)   // REQ-003
+PlanetRoot выполняет:
+  cameraParams = { position: camera.position, fovRadians: camera.fov,
+                   viewportWidthPx, viewportHeightPx, nearPlane, farPlane }
+
+  PlanetRoot.traverseVisible(root, cameraParams)    // обход видимых узлов
+  PlanetRoot.traverseOccluded(root, cameraParams)   // REQ-003 — невидимые узлы
     → для каждого посещённого узла:
         LODEvaluator.evaluate(node, cameraParams)
           → LODEvaluation { screenSizePx, shouldSplit, shouldMerge, isVisible }
 ```
+
+Обход дерева (traverseVisible / traverseOccluded) выполняется PlanetRoot,
+который владеет и QuadtreeManager, и LODEvaluator. Это позволяет PlanetRoot
+отличать видимые чанки от невидимых без передачи LODEvaluator в QuadtreeManager.
 
 ### Фаза 2: Принятие решений split/merge
 
@@ -339,25 +353,51 @@ PlanetRoot собирает все сигналы:
     → принудительный split менее глубокого соседа (ripple enforcement)
 ```
 
-### Фаза 3: Разрешение контрактов
+### Фаза 3: Разрешение контрактов и генерация
+
+#### Фаза 3a: Сбор контрактов для pending-листьев
+
+Детерминированный порядок обхода: face-major (0→5), depth-minor (возрастание),
+tx/ty lexicographic. Это гарантирует, что сосед «слева» (меньший tx) и сосед
+«снизу» (меньший ty) обработаны раньше.
 
 ```
-Для каждого нового листа, требующего генерации:
+Для каждого pending-листа в детерминированном порядке:
 
   PlanetRoot запрашивает контракты соседей через BoundaryContractEngine:
     Для каждого ребра (left, right, bottom, top):
       neighbor = QuadtreeManager.getNeighborAtDepth(node, edge, node.depth)
-      if neighbor существует:
+      if neighbor существует и его контракт уже задекларирован:
         contract = BoundaryContractEngine.getContract(neighbor.chunkId, oppositeEdge)
 
-  Для полярных чанков (face ±Y):
-    PolarTopologyHandler.verifyPoleConvergence(polarContracts, eps)
-      → EP3
+  Если у листа есть все доступные контракты соседей (или соседи отсутствуют):
+    → лист помечается ready-for-geometry
 ```
 
-### Фаза 4: Генерация (sync или async)
+#### Фаза 3b: Генерация геометрии
 
 ```
+Для каждого листа, помеченного ready-for-geometry:
+
+  Генерация (sync или async — см. Фазу 4).
+  После генерации — BoundaryContractEngine.declare(chunkId, edge, geometry)
+  для каждого из 4 рёбер (см. Фазу 5).
+
+  Если лист не ready-for-geometry (отсутствует контракт соседа):
+    → отложить до следующего кадра, когда сосед сгенерирует контракт.
+```
+
+ChunkGenerator производит ТОЛЬКО геометрию (positions, normals, colors, indices).
+BoundaryContractEngine на фазе 5 извлекает контракты из готовой геометрии —
+независимо от того, были рёбра вычислены из контракта соседа (contract-first)
+или из HeightSampler (свободное ребро).
+
+Для полярных чанков (face ±Y):
+  PolarTopologyHandler.verifyPoleConvergence(polarContracts, eps)
+    → EP3
+
+В процессе генерации каждого листа (фаза 3b):
+
   CacheSubsystem.has(chunkId)?
     HIT:  touch entry, вернуть кэшированный mesh. ГОТОВО.
     MISS: продолжить.
@@ -367,7 +407,7 @@ PlanetRoot собирает все сигналы:
     ASYNC: ChunkGenerator.generateAsync(request) → Promise<ChunkGeometry>
            (FBM-сэмплирование выгружено в Web Worker)
 
-  В процессе генерации:
+  Генерация:
     - Рёберные вершины зажимаются под контракты соседей (resample)
     - HeightSampler.getHeight(x,y,z) для каждой внутренней вершины
     - Нормали: центральные разности с contract-aware boundary treatment
@@ -379,9 +419,8 @@ PlanetRoot собирает все сигналы:
   Пост-генерационные проверки:
     → EP4: ContractVerifier.checkRadialDistance / checkVertexCount /
            checkNormals / checkFaceOrigin
-```
 
-### Фаза 5: Кэширование и построение меша
+### Фаза 4: Кэширование и построение меша
 
 ```
   ChunkGenerator.buildMesh(geometry, scene, name) → Mesh + PBRMaterial
@@ -397,11 +436,19 @@ PlanetRoot собирает все сигналы:
   mesh.setParent(planetRoot.getRootTransformNode())
 
   Если кэш переполнен:
-    CacheSubsystem.evict(N) → dispose старых мешей, revoke контрактов
-    → EP9
+    CacheSubsystem.evict(N) — приоритеты вытеснения:
+      1. evictable (явно помеченные после merge)
+      2. Невидимые (за горизонтом / вне frustum), дальние от камеры
+      3. Видимые, наименее недавно использованные
+    Видимый чанк никогда не вытесняется, если в кэше есть невидимые.
+    → EP9: mesh.dispose(), BoundaryContractEngine.revoke()
+
+  PlanetRoot оборачивает buildMesh + CacheSubsystem.put в try/catch:
+    при исключении — mesh.dispose(), material.dispose() для предотвращения
+    утечки ресурсов
 ```
 
-### Фаза 6: Очистка
+### Фаза 5: Очистка
 
 ```
   Старые меши (от merge или eviction) освобождаются:
@@ -417,26 +464,32 @@ PlanetRoot собирает все сигналы:
 
 | EP# | Фаза | Проверка | Инвариант | Откуда вызывается |
 |-----|------|----------|-----------|-------------------|
-| EP1 | Split | 4 дочерних чанка непрерывны на внутренних стыках (C⁰, высоты) | GEN2 | QuadtreeManager.split() post-condition |
-| EP2 | Merge | Round-trip: восстановленный parent == исходный pre-split parent | GEN2 | ChunkGenerator.generate() после merge |
-| EP3 | Contract | Схождение в полюсе: 4 полярных ребра встречаются в одной точке | GEN3 | PolarTopologyHandler при генерации полярного чанка |
-| EP4 | Generate | I1 радиальное расстояние, I2 число вершин, I3 нормали, I4 face origin | GEN | ChunkGenerator.generateSync() post-condition |
-| EP5 | Contract | Ребёрный контракт задекларирован: самосогласованность positions, heights, tangents | GEN3 | BoundaryContractEngine.declare() |
-| EP6 | Contract | Контракты соседей совпадают: C⁰ позиций, G¹ тангентов, консистентность профиля высот | GEN3 | BoundaryContractEngine.verify() для каждой пары соседей |
-| EP7 | Split | Внешний периметр 4 детей == периметр родителя (непрерывность с соседями) | GEN2 | После генерации всех 4 детей, до удаления родительского меша |
+| EP1 | Split | 4 дочерних чанка непрерывны на внутренних стыках (C⁰, высоты) | I5 | QuadtreeManager.split() post-condition |
+| EP2 | Merge | Round-trip: восстановленный parent == исходный pre-split parent | I7 | ChunkGenerator.generate() после merge |
+| EP3 | Contract | Схождение в полюсе: 4 полярных ребра встречаются в одной точке | I10 | PolarTopologyHandler при генерации полярного чанка |
+| EP4 | Generate | Радиальное расстояние, число вершин, нормали, face origin | I1–I4 | ChunkGenerator.generateSync() post-condition |
+| EP5 | Contract | Ребёрный контракт задекларирован: самосогласованность positions, heights, tangents | I8 | BoundaryContractEngine.declare() |
+| EP6 | Contract | Контракты соседей совпадают: C⁰ позиций, G¹ тангентов, консистентность профиля высот | I8 | BoundaryContractEngine.verify() для каждой пары соседей |
+| EP7 | Split | Внешний периметр 4 детей == периметр родителя (непрерывность с соседями) | I6 | После генерации всех 4 детей, до удаления родительского меша |
 | EP8 | LOD eval | Разница глубин любых соседних узлов ≤ 1 | REQ-003 | QuadtreeManager.enforceMaxDepthDelta() после каждого цикла split/merge |
-| EP9 | Cache | При eviction: контракт отозван, меш disposed, нет висячих ссылок | GEN | CacheSubsystem.evict() |
-| EP10 | Deform | Патч применён корректно: геометрия проходит I1–I4 (кроме round-trip) | GEN6 | DeformationSystem.applyPatch() post-condition (будущее) |
+| EP9 | Cache | При eviction: контракт отозван, меш disposed, нет висячих ссылок | I1–I4 | CacheSubsystem.evict() |
+| EP10 | Deform | Патч применён корректно: геометрия проходит I1–I4 (кроме round-trip) | I7 (искл) | DeformationSystem.applyPatch() post-condition (будущее) |
 
-### Стохастический инвариант (GEN3)
+### Стохастический контракт (вероятностная релаксация G¹)
 
 Для фрактальных поверхностей, где G¹ не может быть гарантирована
-детерминированно, ContractVerifier выполняет статистическое сэмплирование:
+детерминированно, используется стохастический контракт (вероятностная
+релаксация G¹). ContractVerifier выполняет статистическое сэмплирование:
 
 - Сэмплирует N случайных пар рёбер на разных глубинах, гранях, seed-ах
 - Измеряет угол тангенциального отклонения в каждой общей вершине
 - Утверждает: среднее отклонение ≈ 0, дисперсия в пределах порога,
   отсутствие систематического смещения по граням и глубинам
+- Проверяет: ни одно измерение не превышает максимальный угол разрыва
+  (worst-case bound, например ≤ 5°)
+
+Тип контракта явно указан в поле `g1Guarantee` интерфейса `EdgeContract`:
+`'deterministic'` или `'stochastic'`.
 
 ## 5. Ключевые архитектурные решения
 
@@ -558,4 +611,5 @@ estimatedCostMs)` использует правило: если `estimatedCostMs
 |----------|-------|
 | `docs/LOD-chunk-system.md` | Спецификация требований — источник всех LOD-REQ-* |
 | `docs/interview-LOD-spec.md` | Протокол интервью — архитектурные решения |
+| `docs/LOD-review-remarks.md` | Архитектурное ревью — замечания и несогласованности |
 | `docs/architecture.md` | Место LODPlanet в архитектуре движка |
