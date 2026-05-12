@@ -111,14 +111,27 @@ SSH tunnel `-L 9222:localhost:9222`. CDP скриншоты через `Page.cap
 - Подписка onUpdate для кастомных хуков
 - CSM (Cascaded Shadow Maps) из коробки
 
-### LODPlanet (`src/planet/`) — IMPLEMENTED
-- **Geometry**: cube-sphere с квадродеревом (6 граней куба, quadtree subdivision)
-- **LOD**: split по расстоянию от камеры, maxDepth 12, effectiveDepth снижается с высотой
-- **Height map**: 3D seeded value noise FBM (12 октав, scale 200, gain 0.5), детерминированно
-- **Terrain amplitude**: 0–8 km (normalized noise [0, 1] × heightAmplitude)
-- **Coloring**: биомы по нормализованной высоте + широте (vertex colors); границы возмущены 3D FBM domain warp для фрактальных изолиний
-- **Caching**: LRU-кэш чанков (max 1000), ключ = `f{face}-d{depth}-{x}-{y}`
-- **Chunk resolution**: 16×16 вершин на чанк
+### LODPlanet (`src/planet/`) — REDESIGN PLANNED
+
+Текущая реализация отключена (не работала после миграции на Babylon.js).
+Разработана новая архитектура и спецификации требований, см.:
+
+- `docs/LOD-chunk-system.md` — спецификация требований к LOD Chunk System
+- `docs/LOD-architecture.md` — верхнеуровневая архитектура (11 компонентов)
+- `docs/LOD/` — 11 покомпонентных спецификаций требований
+
+**Целевая архитектура:**
+- **PlanetRoot**: фасад, владеет всеми подсистемами
+- **QuadtreeManager**: логическое квадродерево на 6 гранях
+- **LODEvaluator**: screen-space error, 1px порог, экспоненциальные параметры
+- **BoundaryContractEngine**: граничные контракты, C⁰/G¹, межконтрактный интерфейс
+- **ChunkGenerator**: contract-first генерация геометрии
+- **HeightSampler**: детерминированное FBM сэмплирование
+- **CacheSubsystem**: LRU-кэш, write-through для deformation
+- **AsyncJobScheduler**: точечная выгрузка в Web Worker
+- **PolarTopologyHandler**: топологическая сингулярность полюсов
+- **DeformationSystem**: разрушающие изменения (будущее)
+- **ContractVerifier**: DEBUG-проверки инвариантов
 
 ### HeightSampler (`src/planet/`) — IMPLEMENTED
 - 3D value noise с hash-функцией и seed-ом

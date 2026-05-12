@@ -376,3 +376,15 @@ OffscreenCanvas/Offscreen GPU для построения буферов.
 | `architecture.md` | Место LODPlanet в архитектуре |
 | `bugtracker.md` | B-004 (позиции вершин), B-005 (face culling), B-006 (winding), B-009 (нормали) |
 | `interview-LOD-spec.md` | Протокол интервью — источник архитектурных решений для данной спецификации |
+| `LOD-architecture.md` | Верхнеуровневая архитектура LOD Chunk System |
+| `LOD/01-planet-root.md` | Спецификация требований — PlanetRoot |
+| `LOD/02-quadtree-manager.md` | Спецификация требований — QuadtreeManager |
+| `LOD/03-lod-evaluator.md` | Спецификация требований — LODEvaluator |
+| `LOD/04-boundary-contract.md` | Спецификация требований — BoundaryContractEngine |
+| `LOD/05-chunk-generator.md` | Спецификация требований — ChunkGenerator |
+| `LOD/06-height-sampler.md` | Спецификация требований — HeightSampler |
+| `LOD/07-cache-subsystem.md` | Спецификация требований — CacheSubsystem |
+| `LOD/08-async-scheduler.md` | Спецификация требований — AsyncJobScheduler |
+| `LOD/09-polar-topology.md` | Спецификация требований — PolarTopologyHandler |
+| `LOD/10-deformation.md` | Спецификация требований — DeformationSystem |
+| `LOD/11-contract-verifier.md` | Спецификация требований — ContractVerifier |
