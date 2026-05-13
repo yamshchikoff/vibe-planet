@@ -1,6 +1,6 @@
 import './style.css';
 import { SceneManager } from './scene/SceneManager';
-import { LODPlanet } from './planet/LODPlanet';
+import { PlanetRoot } from './planet/PlanetRoot';
 import { Sun } from './atmosphere/Sun';
 import { FlightModel } from './flight/FlightModel';
 import { KeyboardControls } from './controls/KeyboardControls';
@@ -42,12 +42,12 @@ showInfo(`Engine created ✓`);
 const sun = new Sun(bjsScene);
 sun.getSunSphere(bjsScene);
 // Planet — cube-sphere LOD with quadtree
-const planet = new LODPlanet({
+const planet = new PlanetRoot({
   planetRadius: 6371,
   seed: 91,
   heightAmplitude: 8,
   chunkResolution: 16,
-  baseDepth: 4,
+  maxDepth: 8,
 }, bjsScene);
 planet.getRoot().parent = worldGroup;
 // Flight model + controls — spawn above highest mountain (seed 91, lat=20°, lon=0°, 6.64 km)
@@ -88,8 +88,8 @@ scene.onUpdate((dt) => {
   plane.update([px, py, pz], _quat);
   // Chase camera — smooth follow behind/above plane
   chaseCamera.update(new Vector3(px, py, pz), _quat, dt);
-  // Update planet (no-op after first call with baseDepth mode)
-  planet.update(cam.position);
+  // Adaptive LOD update — evaluate visible chunks, generate/refine
+  planet.update(cam);
 });
 // Controls overlay toggle
 const overlay = document.getElementById('controls-help');
