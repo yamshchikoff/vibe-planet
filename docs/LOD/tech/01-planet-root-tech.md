@@ -1,359 +1,285 @@
 # Техническая спецификация — PlanetRoot
 
-## 1. Алгоритмы
+## 1. Архитектура
 
-### 1.1 Инициализация
+PlanetRoot — фасад LOD-системы. Владеет 9 подсистемами + config + scene +
+rootTransform. Выполняет покадровый цикл из 6 фаз.
+
+**Sync-only generation:** первый релиз генерирует геометрию синхронно
+(ChunkGenerator.generateSync). AsyncJobScheduler создаётся, но не используется;
+генерация через Worker — отдельный следующий шаг.
+
+## 2. Алгоритмы
+
+### 2.1 Инициализация
 
 ```ts
+const DEFAULTS: PlanetConfig = {
+  planetRadius: 6371,
+  seed: Math.random() * 2147483647,
+  heightAmplitude: 8,
+  maxDepth: 12,
+  chunkResolution: 16,
+  cacheSize: 1000,
+};
+
 class PlanetRoot {
   private config: PlanetConfig;
   private scene: Scene;
   private rootTransform: TransformNode;
-
-  // Подсистемы
+  private sampler: HeightSampler;
   private quadtree: QuadtreeManager;
   private lodEvaluator: LODEvaluator;
-  private chunkGenerator: ChunkGenerator;
-  private cache: CacheSubsystem;
+  private generator: ChunkGenerator;
   private boundaryEngine: BoundaryContractEngine;
-  private asyncScheduler: AsyncJobScheduler;
-  private polarHandler: PolarTopologyHandler;
-  private deformation: DeformationSystem;  // будущее — no-op
-  private verifier: typeof ContractVerifier;  // DEBUG only
+  private cache: CacheSubsystem;
+  private scheduler: AsyncJobScheduler;
 
-  // Состояние кадра
-  private pendingMerges: QuadNode[];
-  private generatedThisFrame: number;
-  private frameStartTime: number;
-
-  constructor(config: PlanetConfig, scene: Scene) {
-    this.config = mergeDefaults(config);
+  constructor(config: Partial<PlanetConfig>, scene: Scene) {
+    this.config = { ...DEFAULTS, ...config };
     this.scene = scene;
     this.rootTransform = new TransformNode('planetRoot', scene);
-
-    // Инициализировать подсистемы в порядке зависимостей
-    this.polarHandler = new PolarTopologyHandler();
-    this.quadtree = new QuadtreeManager(config.maxDepth, this.polarHandler);
-    this.lodEvaluator = new LODEvaluator(config.planetRadius);
+    this.sampler = new HeightSampler(this.config.seed);
+    this.quadtree = new QuadtreeManager(this.config.maxDepth);
+    this.lodEvaluator = new LODEvaluator(this.config.planetRadius, this.config.maxDepth);
+    this.generator = new ChunkGenerator(this.sampler);
     this.boundaryEngine = new BoundaryContractEngine();
-    this.asyncScheduler = new AsyncJobScheduler({
-      workerCount: navigator.hardwareConcurrency - 1 || 1,
-      timeBudgetFn: config.timeBudgetFn,
+    this.scheduler = new AsyncJobScheduler(() => { throw new Error('workers not configured'); });
+    this.cache = new CacheSubsystem({
+      maxSize: this.config.cacheSize,
+      onEvict: (key, entry) => {
+        entry.mesh?.dispose();
+        this.boundaryEngine.revoke(key);
+      },
     });
-    this.chunkGenerator = new ChunkGenerator(
-      new HeightSampler(config.seed),
-      this.asyncScheduler,
-      this.boundaryEngine,
-    );
-    this.cache = new CacheSubsystem(config.cacheSize, this.boundaryEngine);
-    this.deformation = new DeformationSystem(this.cache, this.chunkGenerator);
   }
 }
 ```
 
-### 1.2 Покадровый цикл update(camera)
+### 2.2 Покадровый цикл update(camera)
 
 ```
 update(camera: Camera) → void
-  frameStartTime = performance.now()
-  generatedThisFrame = 0
+  cameraParams = LODEvaluator.extractCameraParams(camera, scene.getEngine())
+  ctx = { cameraParams, splitSignals:[], mergeSignals:[], pendingLeaves:[], generatedThisFrame:0, generationBudget:4 }
 
-  // 0. Извлечь параметры камеры
-  cameraParams = {
-    position: camera.position.clone(),
-    fovRadians: camera.fov,
-    viewportWidthPx: scene.getEngine().getRenderWidth(),
-    viewportHeightPx: scene.getEngine().getRenderHeight(),
-    nearPlane: camera.minZ,
-    farPlane: camera.maxZ,
-  }
+  // ── Phase 1: DFS traversal ────────────────────────────────────────
+  for each root in quadtree.getRoots():
+    traverseNode(root, ctx)
 
-  // 1. LOD-оценка — обход дерева с LODEvaluator
-  splitSignals: { node: QuadNode; evaluation: LODEvaluation }[] = []
-  mergeSignals: { parent: QuadNode; children: QuadNode[] }[] = []
-  nonVisibleNodes: QuadNode[] = []
+  traverseNode(node, ctx):
+    eval = lodEvaluator.evaluate(node, ctx.cameraParams)
+    if not eval.isVisible AND node.state == 'virtual':  return    // skip
 
-  traverseTree(quadtree.getRoots(), cameraParams,
-    onVisit = (node, eval) => {
-      if node.state == 'split':
-        // Продолжить обход детей
-        return 'descend'
+    if node.state == 'split':
+      for each child in node.children:  traverseNode(child, ctx)
+      if eval.shouldMerge:  ctx.mergeSignals.push({parent:node, children:node.children})
+      return
 
-      if eval.shouldSplit:
-        splitSignals.push({ node, evaluation: eval })
-      else if node.state == 'virtual' AND eval.isVisible:
-        // Лист требует генерации
-        pendingLeaves.push({ node, isVisible: true, distance: eval.distance })
-      else if node.state == 'virtual' AND not eval.isVisible:
-        nonVisibleNodes.push(node)
-    },
-    onParent = (parent, childrenEvals) => {
-      if parent.state == 'split' AND all children should merge:
-        mergeSignals.push({ parent, children: parent.children })
-      // Обновить isVisible/distance в кэше для всех loaded детей
-      updateCacheVisibility(parent.children, childrenEvals)
-    }
-  )
+    // Virtual or loaded leaf
+    if eval.shouldSplit AND node.depth < config.maxDepth:
+      ctx.splitSignals.push({ node, eval })
+    else if node.state == 'virtual' AND eval.isVisible:
+      ctx.pendingLeaves.push({ node, isVisible: true })
 
-  // 2. Split-ы (до merge)
-  for each signal in splitSignals:
-    if signal.node.depth < maxDepth:
+  // ── Phase 2: Split ────────────────────────────────────────────────
+  // сначала split, потом merge (split открывает новые узлы для merge)
+  for each signal in ctx.splitSignals:
+    if signal.node.depth < config.maxDepth:
       quadtree.split(signal.node)
-      if DEBUG: ContractVerifier.checkSplitSeams(signal.node.children, ε_position)
+      if DEBUG:
+        splitChildren = signal.node.children.map(c => cache.get(c.id)?.geometry).filter(truthy)
+        if splitChildren.length == 4:
+          ContractVerifier.checkSplitSeams(splitChildren, EPS_POSITION)
 
-  // 3. Merge-и
-  for each signal in mergeSignals:
-    quadtree.merge(signal.children)
-    // Пометить кэш-записи как evictable
+  // ── Phase 3: Merge ────────────────────────────────────────────────
+  for each signal in ctx.mergeSignals:
     for each child in signal.children:
-      cache.markEvictable(child.id)
+      // Пометить детей как evictable — mesh уже не нужен
+      cache.put(child.id, { chunkId:child.id, mesh:null, geometry:null, lastAccess:0, state:'evictable', generationPromise:null })
+    quadtree.merge(signal.children)
 
-  // 4. Enforce max depth delta (BFS ripple)
-  for each affected node:
-    quadtree.enforceMaxDepthDelta(node)
+  // ── Phase 4: Ripple (enforceMaxDepthDelta) ────────────────────────
+  for each signal in ctx.splitSignals:
+    quadtree.enforceMaxDepthDelta(signal.node)
 
-  // 5. Генерация pending-листьев
-  // Фаза 3a: сбор контрактов в детерминированном порядке
-  sort(pendingLeaves, by face-major 0→5, then depth-minor, then tx/ty lexicographic)
+  // ── Phase 5: Generation ───────────────────────────────────────────
+  // Детерминированный порядок: face-major 0→5, depth-minor, tx/ty lexicographic
+  sort(ctx.pendingLeaves, by face, then depth, then tx, then ty)
 
-  readyForGeometry = []
-  for each leaf in pendingLeaves:
-    contracts = {}
-    allAvailable = true
-    for each edge in [left, right, bottom, top]:
-      neighbor = quadtree.getNeighborAtDepth(leaf.node, edge, leaf.node.depth)
-      if neighbor AND neighbor.state == 'loaded':
-        contracts[edge] = boundaryEngine.getContract(neighbor.id, oppositeEdge(edge))
-      else if neighbor is null:
-        contracts[edge] = null  // свободное ребро
-      else:
-        allAvailable = false    // сосед ещё не сгенерирован
-    if allAvailable:
-      readyForGeometry.push({ node: leaf.node, contracts })
-    else:
-      // Отложить до следующего кадра
-      deferredToNextFrame.push(leaf)
+  for each leaf in ctx.pendingLeaves:
+    if ctx.generatedThisFrame >= ctx.generationBudget:  break
+    if cache.has(leaf.node.id):  { cache.touch(leaf.node.id);  continue }   // уже есть
 
-  // Фаза 3b: генерация геометрии
-  for each leaf in readyForGeometry:
-    request = buildGenerateRequest(leaf.node, leaf.contracts, config)
+    request = {
+      face: leaf.node.face, depth: leaf.node.depth,
+      tx: leaf.node.tx, ty: leaf.node.ty,
+      resolution: config.chunkResolution,
+      planetRadius: config.planetRadius,
+      heightAmplitude: config.heightAmplitude,
+    }
 
     try:
-      // Проверить кэш
-      if cache.has(leaf.node.id):
-        cache.touch(leaf.node.id)
-        continue
-
-      // Sync или async
-      estimatedCost = estimateCost(leaf.node.depth, config.chunkResolution)
-      if asyncScheduler.shouldUseSync(leaf.node.depth, estimatedCost):
-        geometry = chunkGenerator.generateSync(request)
-      else:
-        // Async: поставить Promise, меш появится в следующем кадре
-        cache.put(leaf.node.id, { state: 'generating', generationPromise:
-          chunkGenerator.generateAsync(request).then(geometry => {
-            mesh = chunkGenerator.buildMesh(geometry, scene, leaf.node.id)
-            mesh.setParent(rootTransform)
-            // Декларировать контракты
-            for each edge:
-              boundaryEngine.declare(leaf.node.id, edge, geometry)
-            cache.put(leaf.node.id, { state: 'ready', mesh, geometry, ... })
-          })
-        })
-        continue
-
-      mesh = chunkGenerator.buildMesh(geometry, scene, leaf.node.id)
+      geometry = generator.generateSync(request)
+      mesh = buildMesh(geometry, leaf.node.id, leaf.node.face)
       mesh.setParent(rootTransform)
 
-      // Декларировать контракты (BoundaryContractEngine, не ChunkGenerator)
       for each edge in [left, right, bottom, top]:
-        boundaryEngine.declare(leaf.node.id, edge, geometry)
+        boundaryEngine.declare(leaf.node.id, edge, geometry, config.planetRadius, config.heightAmplitude,
+                               { face: leaf.node.face, depth: leaf.node.depth })
 
-      // Кэшировать
-      cache.put(leaf.node.id, {
-        mesh, geometry, material: mesh.material,
-        contracts: boundaryEngine.getContracts(leaf.node.id),
-        state: 'ready', isVisible: leaf.isVisible,
-        distanceFromCamera: leaf.distance,
-      })
+      cache.put(leaf.node.id, { chunkId:leaf.node.id, mesh, geometry, lastAccess:now, state:'ready', generationPromise:null })
+      leaf.node.state = 'loaded'    // переводим узел из virtual → loaded
 
-      // Верифицировать с соседями
-      for each edge in [left, right, bottom, top]:
-        neighbor = quadtree.getNeighborAtDepth(leaf.node, edge, leaf.node.depth)
-        if neighbor AND neighbor.state == 'loaded':
-          myContract = boundaryEngine.getContract(leaf.node.id, edge)
-          neighborContract = boundaryEngine.getContract(neighbor.id, oppositeEdge(edge))
-          boundaryEngine.createInterface(leaf.node.id, neighbor.id, edge)
-          if DEBUG: ContractVerifier.checkContractMatch(myContract, neighborContract, ε_position)
+      // DEBUG: верификация контрактов с соседями
+      if DEBUG:
+        for each edge in [left, right, bottom, top]:
+          neighbor = quadtree.getNeighborAtDepth(leaf.node, edge, leaf.node.depth)
+          if neighbor AND neighbor.state == 'loaded':
+            myContract = boundaryEngine.getContract(leaf.node.id, edge)
+            neighborContract = boundaryEngine.getContract(neighbor.id, oppositeEdge(edge))
+            if myContract AND neighborContract:
+              ContractVerifier.checkContractMatch(myContract, neighborContract, EPS_POSITION)
 
-      generatedThisFrame++
+      ctx.generatedThisFrame++
 
-    catch (error):
-      // R-016: cleanup при ошибке
-      if mesh: mesh.dispose()
-      if geometry?.material: geometry.material.dispose()
-      console.error(`Failed to generate chunk ${leaf.node.id}:`, error)
+    catch error:
+      console.error('Failed to generate chunk ${leaf.node.id}:', error)
 
-  // 6. Очистка старых мешей после merge
-  for each id in pendingCacheEvictions:
-    cache.evictById(id)
-
-  // 7. Вытеснение если кэш переполнен
+  // ── Phase 6: Eviction ─────────────────────────────────────────────
   if cache.getSize() > config.cacheSize:
-    // Приоритетное вытеснение: evictable → невидимые дальние → видимые LRU
     cache.evict(cache.getSize() - config.cacheSize)
-
-  // 8. Профилирование
-  frameTime = performance.now() - frameStartTime
-  if frameTime > 16.6:  // превышен бюджет кадра
-    console.warn(`PlanetRoot.update: frame time ${frameTime.toFixed(1)}ms`)
 ```
 
-### 1.3 Обход дерева (traverseTree)
+### 2.3 buildMesh
 
 ```
-traverseTree(roots, cameraParams, onVisit, onParent):
-  for each root in roots:
-    traverseNode(root, cameraParams, onVisit, onParent)
+buildMesh(geometry: ChunkGeometry, chunkId: string, face: number) → Mesh:
+  mesh = new Mesh(chunkId, scene)
+  vertexData = new VertexData()
+  vertexData.positions = geometry.positions
+  vertexData.normals   = geometry.normals
+  vertexData.colors    = geometry.colors
+  vertexData.indices   = geometry.indices
+  vertexData.applyToMesh(mesh, true)
+  mesh.useVertexColors = true
 
-traverseNode(node, cameraParams, onVisit, onParent):
-  eval = lodEvaluator.evaluate(node, cameraParams)
-
-  if not eval.isVisible AND node.state == 'virtual':
-    // REQ-003: невидимые чанки тоже обрабатываются
-    // но с меньшим приоритетом — только 1-2 уровня глубже
-    if node.depth < cameraParams.maxOccludedDepth:
-      onVisit(node, { ...eval, maxDepth: cameraParams.maxOccludedDepth })
-    return
-
-  action = onVisit(node, eval)
-
-  if action == 'descend' AND node.state == 'split':
-    childEvals = []
-    for each child in node.children:
-      childEval = traverseNode(child, cameraParams, onVisit, onParent)
-      childEvals.push(childEval)
-    onParent(node, childEvals)
+  mat = new PBRMaterial('mat-' + chunkId, scene)
+  mat.sideOrientation = 0   // CCW
+  mat.roughness = 0.7
+  mat.metallic = 0.0
+  mesh.material = mat
+  mesh.receiveShadows = true
+  return mesh
 ```
 
-### 1.4 getHeightAt
+### 2.4 getHeightAt
 
 ```
 getHeightAt(worldPos: Vector3) → number:
-  // Определить face и UV точки
-  [face, u, v] = dirToUv(worldPos.normalize())
-
-  // Найти лист квадродерева, содержащий эту UV-точку
-  // Спуск от корня до листа
-  node = quadtree.getRoot(face)
-  while node.state == 'split':
-    // Определить, в каком из 4 детей точка
-    childIdx = uvToChildIndex(u, v, node.depth)
-    node = node.children[childIdx]
-
-  // Запросить интерполированную высоту
-  if node.state == 'loaded':
-    geometry = cache.get(node.id)?.geometry
-    if geometry:
-      return interpolateHeight(geometry, u, v, node.depth)
-  // Fallback: прямой запрос к HeightSampler
-  return heightSampler.getHeight(worldPos.x, worldPos.y, worldPos.z)
+  // Прямой запрос к HeightSampler. Optimisation: в будущем —
+  // интерполяция из закэшированной геометрии через quadtree lookup.
+  return sampler.getHeight(worldPos.x, worldPos.y, worldPos.z)
 ```
 
-## 2. Структуры данных
+## 3. Структуры данных
 
 ```ts
-interface PlanetConfig {
-  planetRadius: number;          // default 6371
-  seed: number;
-  heightAmplitude: number;       // default 8
-  maxDepth: number;              // default 12
-  chunkResolution: number;       // default 16
-  cacheSize: number;             // default 1000
-  timeBudgetFn: (depth: number) => number;
+export interface PlanetConfig {
+  planetRadius: number;     // default 6371 (км)
+  seed: number;             // random если не указано
+  heightAmplitude: number;  // default 8
+  maxDepth: number;         // default 12
+  chunkResolution: number;  // default 16 (vertices per edge → (RES+1)²)
+  cacheSize: number;        // default 1000
+}
+
+// Per-frame traversal context (internal)
+interface TraversalCtx {
+  cameraParams: CameraParams;
+  splitSignals: { node: QuadNode; eval: LODEvaluation }[];
+  mergeSignals: { parent: QuadNode; children: QuadNode[] }[];
+  pendingLeaves: { node: QuadNode; isVisible: boolean }[];
+  generationBudget: number;
+  generatedThisFrame: number;
 }
 
 class PlanetRoot {
-  // 9 подсистем + config + scene + rootTransform
-  constructor(config: PlanetConfig, scene: Scene);
+  constructor(config: Partial<PlanetConfig>, scene: Scene);
   update(camera: Camera): void;
   getHeightAt(worldPos: Vector3): number;
-  getQuadtreeSnapshot(): QuadtreeSnapshot;
-  dumpContracts(): ContractReport[];
+  getRoot(): TransformNode;
+  getQuadtreeSnapshot(): { id, face, depth, tx, ty, state }[];
+  dumpContracts(): { chunkId, edge, contract }[];
   dispose(): void;
 }
 ```
 
-**Memory footprint (без кэша):** ~2 KiB (подсистемы — лёгкие объекты, чистые структуры). Основная память — в CacheSubsystem.
+**Memory footprint (без кэша):** ~2 KiB (подсистемы — лёгкие объекты).
 
-## 3. Производительность
+## 4. Производительность
 
-| Фаза | ~Time (типичный кадр) | Бюджет |
-|------|----------------------|--------|
-| CameraParams extraction | < 0.1 ms | — |
-| LOD-оценка (1000 узлов) | ~5 ms | 30% |
-| Split/merge + ripple | ~0.5 ms | 3% |
-| Генерация (sync, 2-3 чанка) | ~30 ms | — (async для большинства) |
-| Кэширование + контракты | ~0.5 ms | 3% |
-| Очистка + eviction | ~0.5 ms | 3% |
-| **Total (без генерации)** | **~7 ms** | **42% кадра** |
+| Фаза | ~Time (типичный кадр) | Примечание |
+|------|----------------------|------------|
+| CameraParams extraction | < 0.1 ms | LODEvaluator.extractCameraParams |
+| LOD-оценка (1000 узлов) | ~5 ms | DFS обход 6 корней |
+| Split/merge + ripple | ~0.5 ms | QuadNode переключения |
+| Генерация (sync, до 4 чанков) | ~40 ms | Ограничено generationBudget=4 |
+| Кэширование + контракты | ~0.5 ms | CacheSubsystem.put + BoundaryContractEngine.declare |
+| Eviction | ~0.5 ms | Приоритетное вытеснение |
+| **Total (без генерации)** | **~7 ms** | **42% бюджета кадра (16.6 ms)** |
 
-**Per-frame бюджет:** 8 ms из 16.6 ms (50% кадра). Остальное — рендеринг Babylon.js, FlightModel, управление.
+**Sync-only:** все чанки генерируются на главном потоке.
+Лимит `generationBudget = 4` предотвращает подвисания.
+При превышении бюджета кадра (16.6 ms) — warning в console.
 
-**Генерация асинхронна для большинства чанков:**
-- Sync только для малых глубин (depth 0–3), где estimatedCost < budget
-- Async для всего остального через AsyncJobScheduler
-- buildMesh ВСЕГДА на главном потоке (GPU upload)
-
-## 4. Интеграция с Babylon.js
+## 5. Интеграция с Babylon.js
 
 ```ts
-// PlanetRoot — единственный компонент, взаимодействующий со сценой напрямую:
-import { Camera } from '@babylonjs/core/Cameras/camera';
-import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { Scene } from '@babylonjs/core/scene';
+import { Camera, Mesh, PBRMaterial, TransformNode, VertexData } from '@babylonjs/core';
+import type { Scene } from '@babylonjs/core';
 
-// Camera params extraction:
-// camera.fov — vertical FOV in radians
-// camera.minZ, camera.maxZ — near/far planes
-// camera.position — world position
-// scene.getEngine().getRenderWidth/Height() — viewport
+// Camera params extraction — статический метод LODEvaluator:
+//   LODEvaluator.extractCameraParams(camera, engine) → CameraParams
+//   camera.fov — vertical FOV in radians
+//   camera.minZ, camera.maxZ — near/far planes
+//   camera.position — world position
+//   engine.getRenderWidth/Height() — viewport
+//   camera._frustumPlanes — frustum planes (6 шт.)
 
 // Создание root transform для floating origin:
-// rootTransform = new TransformNode('planetRoot', scene)
-// Все меши чанков parented к rootTransform
+//   rootTransform = new TransformNode('planetRoot', scene)
+//   Все меши чанков parented к rootTransform
 
 // При dispose:
-// rootTransform.dispose() — каскадно освобождает все дочерние меши
+//   cache.dispose() → onEvict → mesh.dispose(), boundaryEngine.revoke()
+//   scheduler.dispose()
+//   rootTransform.dispose()
 ```
 
-## 5. Обработка ошибок
+## 6. Обработка ошибок
 
 | Условие | Поведение |
 |---------|-----------|
-| Телепортация камеры (respawn) | `asyncScheduler.cancelAll()` — все pending-задания отменены |
-| `planetRadius = 0` | Fallback к 1 |
-| `maxDepth = 0` | Планета из 6 чанков, по одному на грань |
-| `cacheSize = 0` | Каждый кадр генерировать заново (деградация, не падение) |
-| Сцена остановлена | `update()` не вызывается, состояние сохраняется |
-| `buildMesh` + `cache.put` бросает исключение | try/catch: `mesh.dispose()`, `material.dispose()` (R-016) |
-| Все Worker-ы заняты | Задания в очереди AsyncJobScheduler |
-| Кэш переполнен | Приоритетное вытеснение, видимые чанки не страдают |
+| `planetRadius = 0` | Fallback к 1 (HeightSampler не работает с R=0) |
+| `maxDepth = 0` | Планета из 6 корневых узлов, split невозможен |
+| `cacheSize = 0` | put → onEvict → mesh сразу dispose (деградация, не падение) |
+| `buildMesh` бросает исключение | ChunkGenerator.generateSync уже отработал — geometry создана, mesh нет. Ошибка логируется, ресурсы — на GC |
+| Сцена остановлена | `update()` не вызывается движком, состояние сохраняется |
+| Кэш переполнен | Приоритетное вытеснение: evictable → LRU ready |
+| AsyncJobScheduler не настроен | runtime-заглушка (sync-only режим) |
 
-## 6. Состояния
+## 7. Состояния
 
 ```
   [uninitialized] ──new PlanetRoot──→ [ready]
                                           │
                                           ├── update(camera) каждый кадр
-                                          │   └── внутренние фазы 0→5
-                                          │
-                                          ├── пауза (сцена остановлена)
-                                          │   └── update не вызывается
+                                          │   └── 6 фаз: traverse → split → merge → ripple → generate → evict
                                           │
                                           └── dispose() ──→ [disposed]
                                               ├── cache.dispose()
-                                              ├── asyncScheduler.terminate()
+                                              ├── scheduler.dispose()
                                               ├── rootTransform.dispose()
                                               └── все меши освобождены
 ```
@@ -362,4 +288,4 @@ import { Scene } from '@babylonjs/core/scene';
 
 - Requirement spec: `docs/LOD/01-planet-root.md`
 - Architecture: `docs/LOD-architecture.md`
-- Владеет: всеми 9 подсистемами
+- Владеет: 9 подсистемами (QuadtreeManager, LODEvaluator, ChunkGenerator, HeightSampler, BoundaryContractEngine, CacheSubsystem, AsyncJobScheduler, PolarTopologyHandler, ContractVerifier)
